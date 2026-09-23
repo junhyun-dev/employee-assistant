@@ -1,0 +1,53 @@
+{
+  "source": {
+    "page_title": "Global Travel and Expense Policy | The GitLab Handbook",
+    "url": "https://handbook.gitlab.com/handbook/finance/expenses/",
+    "observed_at": "2026-09-23T15:07:40+09:00",
+    "content_type": "text/html",
+    "scope_note": "Only the listed lines were copied. This is not a complete copy of the page or any section. original_text preserves the wording observed at the cited line range; heading_path is stored separately."
+  },
+  "sections": [
+    {
+      "id": "equipment",
+      "heading_path": ["Global Travel and Expense Policy", "Equipment"],
+      "source_line_range": "L4001,L4004",
+      "extraction_scope": "Two bullets: existing-team-member refresh; additional equipment.",
+      "original_text": "Existing Team Members will get a yearly refresh of 500 USD (or equivalent local currency) to purchase upgrades, replacements, or enhancements to your home office setup. This only applies to Team Members who have been employed the entire previous calendar year. This excludes laptops - please connect with the IT team if you require a replacement laptop.\nFurther to this, items like additional monitors, laptop stand, external webcam, supplementary lighting, laptop bag/case, can also be considered and expensed using the Stipend/Allowance."
+    },
+    {
+      "id": "approved-wfh-computer",
+      "heading_path": ["Global Travel and Expense Policy", "Approved WFH Equipment List", "Computer Equipment/Other"],
+      "source_line_range": "L4026,L4032-L4033",
+      "extraction_scope": "Three list items only: monitors/stands, replacement laptop battery, replacement laptop charger.",
+      "original_text": "Monitor(s) and monitor stands\nReplacement for Laptop battery\nReplacement for Laptop charger"
+    },
+    {
+      "id": "laptops-insurance-repairs",
+      "heading_path": ["Global Travel and Expense Policy", "Laptops, insurance and repairs"],
+      "source_line_range": "L4092",
+      "extraction_scope": "The refresh and damage-replacement bullet only.",
+      "original_text": "Team Member laptops can be refreshed after three years of employment. If a Team Member needs a replacement laptop due to damage, they must reach out to IT via an issue before purchasing a new one. See Laptop handbook page for your reference."
+    },
+    {
+      "id": "repairs-company-issued",
+      "heading_path": ["Global Travel and Expense Policy", "Laptops, insurance and repairs", "Repairs to company issued equipment"],
+      "source_line_range": "L4094,L4096,L4100",
+      "extraction_scope": "Three bullets only: small replacements, manager approval, approved IT issue.",
+      "original_text": "If you need to replace a battery, laptop charger, or something small that does not affect the productivity or speed of the device, please go ahead and get that small item replaced and expensed.\nPlease get approval from your Manager if your equipment appears to be damaged, defective, or in need of repair\nNeeds to have an approved issue from the IT team."
+    },
+    {
+      "id": "contrast-marketing",
+      "heading_path": ["Global Travel and Expense Policy", "Marketing- related expenses"],
+      "source_line_range": "L4108",
+      "extraction_scope": "One unrelated comparison bullet only.",
+      "original_text": "Up to $5,000 can be expensed via Navan."
+    },
+    {
+      "id": "contrast-meals",
+      "heading_path": ["Global Travel and Expense Policy", "Meals with Clients and Partners"],
+      "source_line_range": "L4119",
+      "extraction_scope": "One unrelated comparison bullet only.",
+      "original_text": "$80 limit per person per meal."
+    }
+  ]
+}

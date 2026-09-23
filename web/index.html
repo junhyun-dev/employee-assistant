@@ -1,0 +1,2752 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>직원 업무 도우미 — 화면 미리보기</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #f2f0e9;
+      --surface: #fffdf8;
+      --surface-strong: #ffffff;
+      --surface-soft: #f7f5ee;
+      --ink: #172421;
+      --ink-soft: #53605c;
+      --line: #d9ddd5;
+      --line-strong: #bcc7be;
+      --brand: #136b5b;
+      --brand-dark: #0c4f43;
+      --brand-soft: #e1f2ec;
+      --accent: #e26d45;
+      --accent-soft: #fff0e8;
+      --warning: #9a5b12;
+      --warning-soft: #fff5d9;
+      --danger: #a53b36;
+      --danger-soft: #fff0ed;
+      --shadow: 0 16px 40px rgba(31, 48, 43, 0.09);
+      --shadow-soft: 0 5px 18px rgba(31, 48, 43, 0.07);
+      --radius: 18px;
+      --radius-small: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-width: 320px;
+      max-width: 100%;
+      background: var(--canvas);
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      max-width: 100%;
+      overflow-x: hidden;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 85% -10%, rgba(226, 109, 69, 0.13), transparent 28rem),
+        var(--canvas);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR",
+        "Apple SD Gothic Neo", sans-serif;
+      line-height: 1.55;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button,
+    a {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button {
+      color: inherit;
+    }
+
+    a {
+      color: var(--brand-dark);
+      text-underline-offset: 3px;
+    }
+
+    :focus-visible {
+      outline: 3px solid rgba(226, 109, 69, 0.38);
+      outline-offset: 2px;
+    }
+
+    .app-header {
+      position: sticky;
+      z-index: 30;
+      top: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 72px;
+      padding: 12px clamp(18px, 3vw, 40px);
+      border-bottom: 1px solid rgba(188, 199, 190, 0.75);
+      background: rgba(255, 253, 248, 0.93);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 40px;
+      height: 40px;
+      flex: 0 0 auto;
+      place-items: center;
+      border-radius: 13px;
+      color: white;
+      background: var(--brand);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+
+    .brand-copy {
+      min-width: 0;
+    }
+
+    .brand-copy strong,
+    .brand-copy span {
+      display: block;
+    }
+
+    .brand-copy strong {
+      font-size: 1.02rem;
+      letter-spacing: -0.025em;
+    }
+
+    .brand-copy span {
+      overflow: hidden;
+      color: var(--ink-soft);
+      font-size: 0.76rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mode-switch,
+    .state-switch,
+    .tab-list,
+    .draft-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface-soft);
+    }
+
+    .mode-switch button,
+    .state-switch button,
+    .tab-list button,
+    .draft-switch button {
+      min-height: 36px;
+      padding: 7px 13px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      cursor: pointer;
+      font-size: 0.84rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .mode-switch button[aria-pressed="true"],
+    .state-switch button[aria-pressed="true"],
+    .tab-list button[aria-selected="true"],
+    .draft-switch button[aria-selected="true"] {
+      color: white;
+      background: var(--brand);
+      box-shadow: 0 3px 9px rgba(19, 107, 91, 0.18);
+    }
+
+    .preview-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 10px clamp(18px, 3vw, 40px);
+      color: #fff8ed;
+      background: #243d37;
+      font-size: 0.82rem;
+    }
+
+    .preview-banner strong {
+      color: white;
+    }
+
+    .preview-banner .banner-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      flex: 0 0 auto;
+      font-weight: 800;
+    }
+
+    .preview-banner .banner-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ff9e76;
+      box-shadow: 0 0 0 4px rgba(255, 158, 118, 0.15);
+    }
+
+    .demo-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 14px clamp(18px, 3vw, 40px);
+      border-bottom: 1px solid var(--line);
+      background: rgba(247, 245, 238, 0.82);
+    }
+
+    .demo-toolbar-copy {
+      min-width: 0;
+    }
+
+    .demo-toolbar-copy strong,
+    .demo-toolbar-copy span {
+      display: block;
+    }
+
+    .demo-toolbar-copy strong {
+      font-size: 0.86rem;
+    }
+
+    .demo-toolbar-copy span {
+      color: var(--ink-soft);
+      font-size: 0.76rem;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 236px minmax(0, 1fr);
+      min-height: calc(100vh - 166px);
+    }
+
+    .sidebar {
+      padding: 24px 18px;
+      border-right: 1px solid var(--line);
+      background: rgba(255, 253, 248, 0.7);
+    }
+
+    .primary-action {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 44px;
+      padding: 10px 14px;
+      border: 0;
+      border-radius: var(--radius-small);
+      color: white;
+      background: var(--brand);
+      cursor: pointer;
+      font-weight: 800;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .primary-action:hover {
+      background: var(--brand-dark);
+    }
+
+    .sidebar-section {
+      margin-top: 28px;
+    }
+
+    .sidebar-label {
+      margin: 0 10px 9px;
+      color: #718079;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .scenario-item {
+      display: flex;
+      width: 100%;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-small);
+      background: var(--surface-strong);
+      text-align: left;
+    }
+
+    .scenario-item .scenario-icon {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      flex: 0 0 auto;
+      place-items: center;
+      border-radius: 9px;
+      color: var(--brand-dark);
+      background: var(--brand-soft);
+      font-size: 0.78rem;
+      font-weight: 900;
+    }
+
+    .scenario-item strong,
+    .scenario-item small {
+      display: block;
+    }
+
+    .scenario-item strong {
+      font-size: 0.85rem;
+    }
+
+    .scenario-item small {
+      margin-top: 2px;
+      color: var(--ink-soft);
+      font-size: 0.73rem;
+    }
+
+    .sidebar-note {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: var(--radius-small);
+      color: var(--ink-soft);
+      background: rgba(225, 242, 236, 0.72);
+      font-size: 0.75rem;
+    }
+
+    .workspace {
+      min-width: 0;
+      padding: 28px clamp(18px, 3vw, 40px) 48px;
+    }
+
+    .experience-view[hidden],
+    .panel-content[hidden],
+    .step-panel[hidden],
+    .draft-pane[hidden] {
+      display: none !important;
+    }
+
+    .workspace-heading {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+
+    .workspace-heading h1 {
+      margin: 0;
+      font-size: clamp(1.45rem, 2.3vw, 2rem);
+      line-height: 1.2;
+      letter-spacing: -0.04em;
+    }
+
+    .workspace-heading p {
+      max-width: 680px;
+      margin: 8px 0 0;
+      color: var(--ink-soft);
+      font-size: 0.9rem;
+    }
+
+    .recommendation {
+      flex: 0 0 auto;
+      padding: 7px 11px;
+      border: 1px solid #b7d9ce;
+      border-radius: 999px;
+      color: var(--brand-dark);
+      background: var(--brand-soft);
+      font-size: 0.76rem;
+      font-weight: 800;
+    }
+
+    .conversation-layout {
+      display: grid;
+      grid-template-columns: minmax(480px, 1fr) minmax(330px, 0.58fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .conversation-column,
+    .context-panel,
+    .step-rail,
+    .step-stage,
+    .step-summary {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .conversation-column {
+      overflow: hidden;
+    }
+
+    .thread-header,
+    .panel-header,
+    .stage-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .thread-header strong,
+    .panel-header strong,
+    .stage-header strong {
+      font-size: 0.88rem;
+    }
+
+    .thread-header span,
+    .panel-header span,
+    .stage-header span {
+      color: var(--ink-soft);
+      font-size: 0.72rem;
+    }
+
+    .thread {
+      padding: 22px;
+    }
+
+    .message {
+      max-width: 92%;
+      margin-bottom: 20px;
+    }
+
+    .message.user {
+      margin-left: auto;
+    }
+
+    .message-label {
+      display: block;
+      margin: 0 0 6px 4px;
+      color: var(--ink-soft);
+      font-size: 0.72rem;
+      font-weight: 800;
+    }
+
+    .message-bubble {
+      overflow-wrap: anywhere;
+      padding: 15px 17px;
+      border: 1px solid var(--line);
+      border-radius: 17px 17px 17px 5px;
+      background: var(--surface-strong);
+      font-size: 0.91rem;
+    }
+
+    .message.user .message-bubble {
+      border-color: var(--brand);
+      border-radius: 17px 17px 5px 17px;
+      color: white;
+      background: var(--brand);
+    }
+
+    .answer-block {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+
+    .answer-block:first-child {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .answer-block h3 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 7px;
+      font-size: 0.87rem;
+    }
+
+    .answer-block p {
+      margin: 0;
+      color: #33423d;
+    }
+
+    .answer-block strong {
+      color: var(--ink);
+    }
+
+    .signal {
+      display: inline-grid;
+      width: 21px;
+      height: 21px;
+      place-items: center;
+      border-radius: 50%;
+      font-size: 0.68rem;
+      font-weight: 900;
+    }
+
+    .signal.confirmed {
+      color: var(--brand-dark);
+      background: var(--brand-soft);
+    }
+
+    .signal.unknown {
+      color: var(--warning);
+      background: var(--warning-soft);
+    }
+
+    .inline-actions,
+    .card-actions,
+    .step-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .button {
+      display: inline-flex;
+      min-height: 38px;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 8px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      color: var(--ink);
+      background: var(--surface-strong);
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 800;
+      text-decoration: none;
+    }
+
+    .button:hover {
+      border-color: var(--brand);
+      color: var(--brand-dark);
+    }
+
+    .button.brand {
+      border-color: var(--brand);
+      color: white;
+      background: var(--brand);
+    }
+
+    .button.brand:hover {
+      color: white;
+      background: var(--brand-dark);
+    }
+
+    .button.ghost {
+      border-color: transparent;
+      background: transparent;
+    }
+
+    .button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    .condition-card {
+      margin-top: 18px;
+      padding: 18px;
+      border: 1px solid #c9dcd5;
+      border-radius: 15px;
+      background: #f2faf7;
+    }
+
+    .condition-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .condition-card-header h2,
+    .condition-card-header p {
+      margin: 0;
+    }
+
+    .condition-card-header h2 {
+      font-size: 0.93rem;
+    }
+
+    .condition-card-header p {
+      margin-top: 3px;
+      color: var(--ink-soft);
+      font-size: 0.76rem;
+    }
+
+    .completion-pill {
+      flex: 0 0 auto;
+      padding: 5px 9px;
+      border-radius: 999px;
+      color: var(--brand-dark);
+      background: var(--surface-strong);
+      font-size: 0.72rem;
+      font-weight: 900;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .field {
+      display: block;
+    }
+
+    .field span {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--ink-soft);
+      font-size: 0.72rem;
+      font-weight: 800;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      min-height: 42px;
+      padding: 9px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      color: var(--ink);
+      background: var(--surface-strong);
+    }
+
+    .condition-footnote {
+      margin: 12px 0 0;
+      color: var(--ink-soft);
+      font-size: 0.74rem;
+    }
+
+    .context-panel {
+      position: sticky;
+      top: 184px;
+      overflow: hidden;
+      min-height: 590px;
+    }
+
+    .panel-header {
+      display: block;
+      padding-bottom: 10px;
+    }
+
+    .panel-header-copy {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .tab-list {
+      width: 100%;
+    }
+
+    .tab-list button {
+      flex: 1;
+    }
+
+    .panel-body {
+      padding: 18px;
+    }
+
+    .source-card,
+    .known-card,
+    .unknown-card,
+    .status-card {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-small);
+      background: var(--surface-strong);
+    }
+
+    .source-card + .source-card,
+    .known-card + .unknown-card {
+      margin-top: 10px;
+    }
+
+    .source-card .eyebrow,
+    .known-card .eyebrow,
+    .unknown-card .eyebrow,
+    .status-card .eyebrow {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--ink-soft);
+      font-size: 0.68rem;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .source-card h3,
+    .known-card h3,
+    .unknown-card h3,
+    .status-card h3 {
+      margin: 0;
+      font-size: 0.87rem;
+    }
+
+    .source-card p,
+    .known-card p,
+    .unknown-card p,
+    .status-card p {
+      margin: 6px 0 0;
+      color: var(--ink-soft);
+      font-size: 0.77rem;
+    }
+
+    .source-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+      font-size: 0.72rem;
+    }
+
+    .source-meta span {
+      color: var(--ink-soft);
+    }
+
+    .source-meta a {
+      font-weight: 800;
+    }
+
+    .source-card.missing {
+      border-color: #e4be7e;
+      background: var(--warning-soft);
+    }
+
+    .draft-switch {
+      width: 100%;
+      margin-bottom: 12px;
+    }
+
+    .draft-switch button {
+      flex: 1;
+    }
+
+    .draft-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 7px;
+    }
+
+    .draft-label label {
+      font-size: 0.78rem;
+      font-weight: 900;
+    }
+
+    .draft-label span {
+      color: var(--ink-soft);
+      font-size: 0.68rem;
+    }
+
+    .draft-area {
+      width: 100%;
+      min-height: 270px;
+      resize: vertical;
+      padding: 13px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-small);
+      color: var(--ink);
+      background: #fffefa;
+      font-size: 0.8rem;
+      line-height: 1.65;
+    }
+
+    .draft-footnote {
+      margin: 10px 0 0;
+      color: var(--ink-soft);
+      font-size: 0.72rem;
+    }
+
+    .origin-list {
+      display: grid;
+      gap: 8px;
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .origin-list li {
+      display: grid;
+      grid-template-columns: 75px 1fr;
+      gap: 8px;
+      font-size: 0.73rem;
+    }
+
+    .origin-list strong {
+      color: var(--brand-dark);
+    }
+
+    .origin-list span {
+      color: var(--ink-soft);
+    }
+
+    .state-card {
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: var(--surface-strong);
+    }
+
+    .state-card.loading {
+      border-color: #bed6cf;
+      background: #f2faf7;
+    }
+
+    .state-card.warning {
+      border-color: #e4be7e;
+      background: var(--warning-soft);
+    }
+
+    .state-card h2,
+    .state-card p {
+      margin: 0;
+    }
+
+    .state-card h2 {
+      font-size: 1rem;
+    }
+
+    .state-card p {
+      margin-top: 6px;
+      color: var(--ink-soft);
+      font-size: 0.82rem;
+    }
+
+    .loading-line {
+      height: 12px;
+      margin-top: 12px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #e5ece8 20%, #f8fbf9 40%, #e5ece8 60%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite linear;
+    }
+
+    .loading-line.short {
+      width: 62%;
+    }
+
+    @keyframes shimmer {
+      to {
+        background-position: -200% 0;
+      }
+    }
+
+    .state-only {
+      display: none;
+    }
+
+    body[data-demo-state="normal"] .state-only.state-normal,
+    body[data-demo-state="loading"] .state-only.state-loading,
+    body[data-demo-state="missing"] .state-only.state-missing {
+      display: block;
+    }
+
+    .workflow-layout {
+      display: grid;
+      grid-template-columns: 210px minmax(470px, 1fr) 290px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .step-rail,
+    .step-stage,
+    .step-summary {
+      overflow: hidden;
+    }
+
+    .step-rail {
+      padding: 12px;
+    }
+
+    .step-rail-title {
+      margin: 6px 8px 12px;
+      color: var(--ink-soft);
+      font-size: 0.7rem;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .step-button {
+      display: grid;
+      width: 100%;
+      grid-template-columns: 30px 1fr;
+      gap: 9px;
+      align-items: center;
+      padding: 11px 9px;
+      border: 0;
+      border-radius: 11px;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .step-button + .step-button {
+      margin-top: 4px;
+    }
+
+    .step-button:hover {
+      background: var(--surface-soft);
+    }
+
+    .step-button[aria-current="step"] {
+      color: var(--brand-dark);
+      background: var(--brand-soft);
+    }
+
+    .step-number {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      border-radius: 50%;
+      background: var(--surface-strong);
+      font-size: 0.72rem;
+      font-weight: 900;
+    }
+
+    .step-button[aria-current="step"] .step-number {
+      border-color: var(--brand);
+      color: white;
+      background: var(--brand);
+    }
+
+    .step-button strong,
+    .step-button small {
+      display: block;
+    }
+
+    .step-button strong {
+      font-size: 0.79rem;
+    }
+
+    .step-button small {
+      color: var(--ink-soft);
+      font-size: 0.66rem;
+    }
+
+    .step-stage {
+      min-height: 600px;
+    }
+
+    .step-panel {
+      padding: 22px;
+    }
+
+    .step-panel h2 {
+      margin: 0;
+      font-size: 1.12rem;
+      letter-spacing: -0.025em;
+    }
+
+    .step-panel > p {
+      margin: 7px 0 18px;
+      color: var(--ink-soft);
+      font-size: 0.84rem;
+    }
+
+    .question-card {
+      padding: 20px;
+      border-radius: 15px;
+      color: white;
+      background: var(--brand);
+    }
+
+    .question-card .eyebrow {
+      color: #bce2d7;
+      font-size: 0.7rem;
+      font-weight: 900;
+    }
+
+    .question-card p {
+      margin: 8px 0 0;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .difference-card {
+      margin-top: 14px;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-small);
+      background: var(--surface-soft);
+    }
+
+    .difference-card h3,
+    .difference-card p {
+      margin: 0;
+    }
+
+    .difference-card h3 {
+      font-size: 0.84rem;
+    }
+
+    .difference-card p {
+      margin-top: 5px;
+      color: var(--ink-soft);
+      font-size: 0.77rem;
+    }
+
+    .result-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .result-list li {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 9px;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-small);
+      background: var(--surface-strong);
+      font-size: 0.8rem;
+    }
+
+    .result-list .check {
+      display: grid;
+      width: 22px;
+      height: 22px;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--brand-dark);
+      background: var(--brand-soft);
+      font-size: 0.7rem;
+      font-weight: 900;
+    }
+
+    .step-summary {
+      position: sticky;
+      top: 184px;
+      padding: 17px;
+    }
+
+    .step-summary h2 {
+      margin: 0;
+      font-size: 0.88rem;
+    }
+
+    .summary-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.75rem;
+    }
+
+    .summary-row:last-of-type {
+      border-bottom: 0;
+    }
+
+    .summary-row span {
+      color: var(--ink-soft);
+    }
+
+    .summary-row strong {
+      text-align: right;
+    }
+
+    .summary-note {
+      padding: 11px;
+      border-radius: 10px;
+      color: var(--warning);
+      background: var(--warning-soft);
+      font-size: 0.72rem;
+    }
+
+    .toast {
+      position: fixed;
+      z-index: 100;
+      right: 24px;
+      bottom: 24px;
+      max-width: min(390px, calc(100vw - 32px));
+      padding: 13px 16px;
+      border: 1px solid #b7d9ce;
+      border-radius: 12px;
+      color: white;
+      background: #203d36;
+      box-shadow: var(--shadow);
+      font-size: 0.82rem;
+      transform: translateY(20px);
+      opacity: 0;
+      pointer-events: none;
+      transition: 180ms ease;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .muted {
+      color: var(--ink-soft);
+    }
+
+    @media (max-width: 1180px) {
+      .conversation-layout {
+        grid-template-columns: minmax(0, 1fr) 340px;
+      }
+
+      .workflow-layout {
+        grid-template-columns: 190px minmax(0, 1fr);
+      }
+
+      .step-summary {
+        position: static;
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .step-summary h2,
+      .step-summary .summary-note,
+      .step-summary .step-actions {
+        grid-column: 1 / -1;
+      }
+
+      .summary-row {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px;
+      }
+    }
+
+    @media (max-width: 930px) {
+      .app-header,
+      .demo-toolbar {
+        align-items: flex-start;
+      }
+
+      .shell {
+        display: block;
+      }
+
+      .sidebar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        overflow-x: auto;
+        padding: 12px 18px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .sidebar .primary-action {
+        width: auto;
+        flex: 0 0 auto;
+      }
+
+      .sidebar-section {
+        margin: 0;
+      }
+
+      .sidebar-label,
+      .sidebar-note {
+        display: none;
+      }
+
+      .scenario-item {
+        min-width: 210px;
+      }
+
+      .conversation-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .context-panel,
+      .step-summary {
+        position: static;
+      }
+
+      .context-panel {
+        min-height: auto;
+      }
+
+      .workflow-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .step-rail {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(130px, 1fr));
+        overflow-x: auto;
+      }
+
+      .step-rail-title {
+        display: none;
+      }
+
+      .step-button + .step-button {
+        margin-top: 0;
+      }
+    }
+
+    @media (max-width: 650px) {
+      .app-header {
+        position: static;
+        display: block;
+      }
+
+      .mode-switch {
+        width: 100%;
+        margin-top: 12px;
+        overflow-x: auto;
+      }
+
+      .mode-switch button {
+        flex: 1;
+      }
+
+      .preview-banner,
+      .demo-toolbar {
+        display: block;
+      }
+
+      .preview-banner span,
+      .demo-toolbar-copy span {
+        overflow-wrap: anywhere;
+      }
+
+      .preview-banner .banner-label {
+        margin-bottom: 5px;
+      }
+
+      .state-switch {
+        width: 100%;
+        margin-top: 10px;
+        overflow-x: auto;
+      }
+
+      .state-switch button {
+        flex: 1;
+      }
+
+      .workspace {
+        padding: 22px 14px 36px;
+      }
+
+      .workspace-heading {
+        display: block;
+      }
+
+      .recommendation {
+        display: inline-block;
+        margin-top: 10px;
+      }
+
+      .thread,
+      .step-panel {
+        padding: 16px;
+      }
+
+      .thread-header,
+      .panel-header-copy,
+      .stage-header {
+        flex-wrap: wrap;
+      }
+
+      .message {
+        max-width: 100%;
+      }
+
+      .field-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .condition-card-header {
+        display: block;
+      }
+
+      .completion-pill {
+        display: inline-block;
+        margin-top: 8px;
+      }
+
+      .step-summary {
+        display: block;
+      }
+
+      .summary-row + .summary-row {
+        margin-top: 8px;
+      }
+
+      .origin-list li {
+        grid-template-columns: 1fr;
+        gap: 2px;
+      }
+    }
+    #connectionNotice,
+    #inputChangedNotice {
+      margin: 12px clamp(16px, 3vw, 40px) 0;
+    }
+
+    .proposal-note {
+      margin: 10px 0 0;
+      padding: 10px 12px;
+      border-left: 3px solid var(--line-strong);
+      background: var(--surface-soft);
+      color: var(--text-soft);
+      font-size: 0.82rem;
+      white-space: pre-wrap;
+    }
+
+    .proposal-note[data-status="review"] {
+      border-left-color: var(--warning);
+    }
+
+    .proposal-note[data-status="withheld"] {
+      border-left-color: var(--danger);
+    }
+
+    .source-card .source-excerpt {
+      white-space: pre-wrap;
+      max-height: 12rem;
+      overflow: auto;
+    }
+  </style>
+  <style id="visual-direction-comparison">
+    :root {
+      --canvas: #eef0f2;
+      --surface: #ffffff;
+      --surface-strong: #ffffff;
+      --surface-soft: #f5f6f7;
+      --ink: #1f2328;
+      --ink-soft: #626a73;
+      --line: #d9dde2;
+      --line-strong: #b9c0c8;
+      --brand: #2f5fd0;
+      --brand-dark: #244aa4;
+      --brand-soft: #e9efff;
+      --accent: #bd5b29;
+      --accent-soft: #fff2e9;
+      --warning: #8b5a0a;
+      --warning-soft: #fff7df;
+      --danger: #a13f39;
+      --danger-soft: #fff0ed;
+      --shadow: none;
+      --shadow-soft: none;
+      --radius: 4px;
+      --radius-small: 3px;
+    }
+
+    body {
+      background: var(--canvas);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR",
+        "Apple SD Gothic Neo", sans-serif;
+    }
+
+    .app-header {
+      min-height: 58px;
+      padding: 8px clamp(18px, 2.7vw, 40px);
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(10px);
+    }
+
+    .brand {
+      gap: 10px;
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 3px;
+      background: #20252a;
+      font-size: 0.8rem;
+    }
+
+    .brand-copy strong {
+      font-size: 0.92rem;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-copy span {
+      font-size: 0.69rem;
+    }
+
+    .mode-switch,
+    .state-switch,
+    .tab-list,
+    .draft-switch {
+      gap: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .mode-switch {
+      align-self: stretch;
+    }
+
+    .mode-switch button,
+    .state-switch button,
+    .tab-list button,
+    .draft-switch button {
+      min-height: 34px;
+      padding: 6px 13px;
+      border-radius: 0;
+      font-size: 0.79rem;
+    }
+
+    .mode-switch button {
+      align-self: stretch;
+      border-bottom: 2px solid transparent;
+      color: var(--ink-soft);
+    }
+
+    .mode-switch button[aria-pressed="true"] {
+      border-bottom-color: var(--brand);
+      color: var(--ink);
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .preview-banner {
+      min-height: 34px;
+      justify-content: flex-start;
+      padding: 6px clamp(18px, 2.7vw, 40px);
+      color: #dfe3e7;
+      background: #252a2e;
+      font-size: 0.72rem;
+    }
+
+    .preview-banner .banner-label {
+      padding-right: 16px;
+      border-right: 1px solid #50565c;
+      color: white;
+    }
+
+    .preview-banner .banner-dot {
+      width: 6px;
+      height: 6px;
+      background: #f19a63;
+      box-shadow: none;
+    }
+
+    .demo-toolbar {
+      min-height: 56px;
+      padding: 9px clamp(18px, 2.7vw, 40px);
+      border-bottom: 1px solid var(--line);
+      background: #f7f8f9;
+    }
+
+    .demo-toolbar-copy strong {
+      font-size: 0.78rem;
+    }
+
+    .demo-toolbar-copy span {
+      font-size: 0.69rem;
+    }
+
+    .state-switch {
+      border: 1px solid var(--line-strong);
+      background: white;
+    }
+
+    .state-switch button + button {
+      border-left: 1px solid var(--line);
+    }
+
+    .state-switch button[aria-pressed="true"] {
+      color: white;
+      background: #313840;
+      box-shadow: none;
+    }
+
+    .shell {
+      grid-template-columns: 204px minmax(0, 1fr);
+      min-height: calc(100vh - 148px);
+    }
+
+    .sidebar {
+      padding: 20px 15px;
+      border-right: 1px solid var(--line);
+      background: #f5f6f7;
+    }
+
+    .primary-action {
+      min-height: 40px;
+      border: 1px solid var(--brand);
+      border-radius: 3px;
+      background: var(--brand);
+      box-shadow: none;
+      font-size: 0.82rem;
+    }
+
+    .sidebar-label {
+      margin-left: 4px;
+      color: #737b85;
+      font-size: 0.66rem;
+    }
+
+    .scenario-item {
+      gap: 9px;
+      padding: 10px 8px;
+      border: 0;
+      border-left: 2px solid var(--brand);
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .scenario-item .scenario-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 2px;
+      color: var(--brand-dark);
+      background: var(--brand-soft);
+      font-size: 0.66rem;
+    }
+
+    .scenario-item strong {
+      font-size: 0.78rem;
+    }
+
+    .scenario-item small {
+      font-size: 0.67rem;
+    }
+
+    .sidebar-note {
+      padding: 12px 4px;
+      border-top: 1px solid var(--line);
+      border-radius: 0;
+      background: transparent;
+      font-size: 0.69rem;
+    }
+
+    .workspace {
+      padding: 34px clamp(22px, 3.2vw, 48px) 52px;
+    }
+
+    .workspace-heading {
+      max-width: 1260px;
+      margin: 0 auto 26px;
+      align-items: flex-start;
+    }
+
+    .workspace-heading h1 {
+      font-size: clamp(1.7rem, 2.3vw, 2.25rem);
+      letter-spacing: -0.045em;
+    }
+
+    .workspace-heading p {
+      max-width: 720px;
+      margin-top: 7px;
+      font-size: 0.84rem;
+    }
+
+    .recommendation {
+      padding: 5px 0 4px 10px;
+      border: 0;
+      border-left: 2px solid var(--brand);
+      border-radius: 0;
+      color: var(--brand-dark);
+      background: transparent;
+      font-size: 0.69rem;
+      letter-spacing: 0.04em;
+    }
+
+    .button {
+      min-height: 36px;
+      padding: 7px 11px;
+      border-radius: 3px;
+      font-size: 0.76rem;
+    }
+
+    .button.brand {
+      border-color: var(--brand);
+      background: var(--brand);
+    }
+
+    .button.brand:hover {
+      background: var(--brand-dark);
+    }
+
+    .completion-pill {
+      padding: 3px 7px;
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      color: var(--ink-soft);
+      background: transparent;
+      font-size: 0.67rem;
+    }
+
+    .field input,
+    .field select {
+      min-height: 39px;
+      border-radius: 2px;
+      background: white;
+    }
+
+    .draft-area {
+      border-radius: 2px;
+      background: white;
+    }
+
+    .toast {
+      border: 0;
+      border-radius: 3px;
+      color: white;
+      background: #2a3036;
+      box-shadow: 0 8px 28px rgba(20, 24, 28, 0.18);
+    }
+
+    /* A — 한 편의 정책 문서처럼 읽고, 근거를 행으로 훑는다. */
+    body[data-mode="conversation"] .workspace {
+      background: #ffffff;
+    }
+
+    #conversationView .conversation-layout {
+      max-width: 1260px;
+      grid-template-columns: minmax(500px, 1fr) 340px;
+      gap: 0;
+      margin: 0 auto;
+      border-top: 1px solid #aeb5bd;
+      border-bottom: 1px solid var(--line);
+      background: white;
+    }
+
+    #conversationView .conversation-column,
+    #conversationView .context-panel {
+      border: 0;
+      border-radius: 0;
+      background: white;
+      box-shadow: none;
+    }
+
+    #conversationView .conversation-column {
+      padding: 0 46px 28px;
+    }
+
+    #conversationView .thread-header {
+      min-height: 48px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    #conversationView .thread-header strong {
+      color: var(--ink-soft);
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+
+    #conversationView .thread-header span {
+      font-size: 0.67rem;
+    }
+
+    #conversationView .thread {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 46px 0 30px;
+    }
+
+    #conversationView .message {
+      max-width: none;
+      margin: 0;
+    }
+
+    #conversationView .message.user {
+      margin: 0 0 52px;
+    }
+
+    #conversationView .message-label {
+      margin: 0 0 10px;
+      color: #707882;
+      font-size: 0.65rem;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    #conversationView .message-bubble,
+    #conversationView .message.user .message-bubble {
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      color: var(--ink);
+      background: transparent;
+    }
+
+    #conversationView .message.user .message-bubble {
+      max-width: 680px;
+      font-size: clamp(1.45rem, 2.3vw, 2.05rem);
+      font-weight: 760;
+      line-height: 1.36;
+      letter-spacing: -0.045em;
+    }
+
+    #conversationView .message.assistant .message-bubble {
+      font-size: 0.96rem;
+      line-height: 1.85;
+    }
+
+    #conversationView .answer-block {
+      margin-top: 28px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+    }
+
+    #conversationView .answer-block:first-child {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    #conversationView .answer-block h3 {
+      margin-bottom: 10px;
+      font-size: 0.94rem;
+    }
+
+    #conversationView .signal {
+      width: 18px;
+      height: 18px;
+      border-radius: 2px;
+      font-size: 0.62rem;
+    }
+
+    #conversationView .inline-actions {
+      margin-top: 26px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    #conversationView .condition-card {
+      margin-top: 36px;
+      padding: 26px 0 4px;
+      border: 0;
+      border-top: 1px solid var(--line-strong);
+      border-radius: 0;
+      background: transparent;
+    }
+
+    #conversationView .condition-card-header h2 {
+      font-size: 1rem;
+    }
+
+    #conversationView .context-panel {
+      position: sticky;
+      top: 150px;
+      min-height: 650px;
+      border-left: 1px solid var(--line);
+      background: #fafbfc;
+    }
+
+    #conversationView .panel-header {
+      padding: 13px 18px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    #conversationView .panel-header-copy {
+      margin-bottom: 7px;
+    }
+
+    #conversationView .tab-list {
+      border-top: 1px solid var(--line);
+    }
+
+    #conversationView .tab-list button {
+      border-bottom: 2px solid transparent;
+      color: var(--ink-soft);
+    }
+
+    #conversationView .tab-list button[aria-selected="true"] {
+      border-bottom-color: var(--brand);
+      color: var(--ink);
+      background: transparent;
+      box-shadow: none;
+    }
+
+    #conversationView .panel-body {
+      padding: 8px 18px 22px;
+    }
+
+    #conversationView .panel-content[data-panel-content="evidence"] .state-normal,
+    #conversationView .panel-content[data-panel-content="evidence"] .state-missing {
+      counter-reset: source-row;
+    }
+
+    #conversationView .source-card {
+      position: relative;
+      counter-increment: source-row;
+      margin: 0;
+      padding: 18px 0 18px 38px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      background: transparent;
+    }
+
+    #conversationView .source-card::before {
+      position: absolute;
+      top: 18px;
+      left: 0;
+      color: #8b929a;
+      content: counter(source-row, decimal-leading-zero);
+      font-size: 0.67rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #conversationView .source-card + .source-card {
+      margin-top: 0;
+    }
+
+    #conversationView .source-card h3 {
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+
+    #conversationView .source-card p {
+      font-size: 0.73rem;
+      line-height: 1.55;
+    }
+
+    #conversationView .source-card.missing {
+      background: transparent;
+    }
+
+    #conversationView .draft-switch {
+      border-bottom: 1px solid var(--line);
+    }
+
+    #conversationView .draft-switch button {
+      border-bottom: 2px solid transparent;
+      color: var(--ink-soft);
+    }
+
+    #conversationView .draft-switch button[aria-selected="true"] {
+      border-bottom-color: var(--brand);
+      color: var(--ink);
+      background: transparent;
+      box-shadow: none;
+    }
+
+    #conversationView .draft-area {
+      min-height: 320px;
+      border-color: var(--line);
+      font-size: 0.79rem;
+    }
+
+    #conversationView .state-card,
+    #conversationView .source-card.missing {
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    /* B — 초안 편집면을 중심에 두고, 근거와 조건은 주변 도구로 둔다. */
+    body[data-mode="workflow"] .sidebar {
+      color: #e9edf0;
+      border-right-color: #343b42;
+      background: #252a2f;
+    }
+
+    body[data-mode="workflow"] .sidebar-label,
+    body[data-mode="workflow"] .scenario-item small,
+    body[data-mode="workflow"] .sidebar-note {
+      color: #aeb5bc;
+    }
+
+    body[data-mode="workflow"] .scenario-item {
+      border-left-color: #7fa0ff;
+    }
+
+    body[data-mode="workflow"] .scenario-item .scenario-icon {
+      color: #dfe7ff;
+      background: #3a465d;
+    }
+
+    body[data-mode="workflow"] .sidebar-note {
+      border-top-color: #424950;
+    }
+
+    body[data-mode="workflow"] .workspace {
+      background: #e7e9ec;
+    }
+
+    #workflowView .workflow-layout {
+      max-width: 1320px;
+      grid-template-columns: 188px minmax(520px, 1fr) 274px;
+      gap: 1px;
+      margin: 0 auto;
+      border: 1px solid #cbd0d6;
+      background: #cbd0d6;
+    }
+
+    #workflowView .step-rail,
+    #workflowView .step-stage,
+    #workflowView .step-summary {
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    #workflowView .step-rail {
+      display: flex;
+      flex-direction: column;
+      padding: 16px 10px;
+      color: #f1f3f5;
+      background: #2b3035;
+    }
+
+    #workflowView .step-rail-title {
+      order: 0;
+      color: #9ea6ae;
+    }
+
+    #workflowView .step-button[data-step="4"] { order: 1; }
+    #workflowView .step-button[data-step="3"] { order: 2; }
+    #workflowView .step-button[data-step="2"] { order: 3; }
+    #workflowView .step-button[data-step="1"] { order: 4; }
+
+    #workflowView .step-button {
+      color: #d8dde1;
+      border-radius: 2px;
+    }
+
+    #workflowView .step-button:hover {
+      background: #353b41;
+    }
+
+    #workflowView .step-button[aria-current="step"] {
+      color: white;
+      background: #3b4249;
+    }
+
+    #workflowView .step-number {
+      border-color: #5b646d;
+      border-radius: 2px;
+      color: #bfc6cc;
+      background: transparent;
+    }
+
+    #workflowView .step-button[aria-current="step"] .step-number {
+      border-color: #8dabff;
+      color: white;
+      background: var(--brand);
+    }
+
+    #workflowView .step-button small {
+      color: #9ea6ae;
+    }
+
+    #workflowView .step-stage {
+      min-height: 690px;
+      background: white;
+    }
+
+    #workflowView .stage-header {
+      min-height: 46px;
+      padding: 11px 22px;
+      border-bottom: 1px solid var(--line);
+      background: #f8f9fa;
+    }
+
+    #workflowView .stage-header strong {
+      color: var(--ink-soft);
+      font-size: 0.72rem;
+    }
+
+    #workflowView .step-panel {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 46px clamp(28px, 5vw, 72px) 60px;
+    }
+
+    #workflowView .step-panel h2 {
+      font-size: 1.36rem;
+      letter-spacing: -0.035em;
+    }
+
+    #workflowView .step-panel > p {
+      max-width: 680px;
+      margin-bottom: 30px;
+      font-size: 0.79rem;
+    }
+
+    #workflowView .draft-switch {
+      margin-bottom: 22px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    #workflowView .draft-switch button {
+      flex: 0 0 auto;
+      min-width: 130px;
+      border-bottom: 2px solid transparent;
+      color: var(--ink-soft);
+    }
+
+    #workflowView .draft-switch button[aria-selected="true"] {
+      border-bottom-color: var(--brand);
+      color: var(--ink);
+      background: transparent;
+      box-shadow: none;
+    }
+
+    #workflowView .draft-label {
+      margin-bottom: 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    #workflowView .draft-area {
+      min-height: 430px;
+      padding: 24px 4px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      color: #202428;
+      background: white;
+      font-family: "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 1rem;
+      line-height: 1.9;
+    }
+
+    #workflowView .origin-list {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    #workflowView .origin-list li {
+      grid-template-columns: 84px 1fr;
+      padding: 5px 0;
+      border-bottom: 1px solid #eceff1;
+    }
+
+    #workflowView .condition-card,
+    #workflowView .question-card,
+    #workflowView .difference-card,
+    #workflowView .state-card,
+    #workflowView .result-list li {
+      border-radius: 2px;
+      box-shadow: none;
+    }
+
+    #workflowView .condition-card {
+      border: 1px solid var(--line);
+      background: #fafbfc;
+    }
+
+    #workflowView .question-card {
+      color: var(--ink);
+      background: #f1f3f5;
+    }
+
+    #workflowView .question-card .eyebrow {
+      color: var(--ink-soft);
+    }
+
+    #workflowView .difference-card {
+      background: transparent;
+    }
+
+    #workflowView .step-summary {
+      position: sticky;
+      top: 150px;
+      padding: 18px;
+      background: #f7f8fa;
+    }
+
+    #workflowView .summary-row {
+      padding: 13px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    #workflowView .summary-note {
+      border-left: 2px solid #d59b35;
+      border-radius: 0;
+      background: #fff9e8;
+    }
+
+    @media (max-width: 1180px) {
+      #conversationView .conversation-layout {
+        grid-template-columns: minmax(0, 1fr) 320px;
+      }
+
+      #conversationView .conversation-column {
+        padding-inline: 30px;
+      }
+
+      #workflowView .workflow-layout {
+        grid-template-columns: 164px minmax(0, 1fr);
+      }
+
+      #workflowView .step-summary {
+        position: static;
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+    }
+
+    @media (max-width: 930px) {
+      .shell {
+        display: block;
+      }
+
+      .sidebar {
+        background: #f5f6f7;
+      }
+
+      body[data-mode="workflow"] .sidebar {
+        background: #252a2f;
+      }
+
+      #conversationView .conversation-layout,
+      #workflowView .workflow-layout {
+        grid-template-columns: 1fr;
+      }
+
+      #conversationView .context-panel,
+      #workflowView .step-summary {
+        position: static;
+      }
+
+      #conversationView .context-panel {
+        border-top: 1px solid var(--line);
+        border-left: 0;
+      }
+
+      #workflowView .step-rail {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(128px, 1fr));
+        overflow-x: auto;
+      }
+
+      #workflowView .step-rail-title {
+        display: none;
+      }
+
+      #workflowView .step-button[data-step] {
+        order: initial;
+      }
+
+      #workflowView .step-button[data-step="4"] { order: 1; }
+      #workflowView .step-button[data-step="3"] { order: 2; }
+      #workflowView .step-button[data-step="2"] { order: 3; }
+      #workflowView .step-button[data-step="1"] { order: 4; }
+    }
+
+    @media (max-width: 650px) {
+      .app-header {
+        padding: 10px 16px 0;
+      }
+
+      .mode-switch {
+        border-top: 1px solid var(--line);
+      }
+
+      .preview-banner {
+        padding: 7px 16px;
+      }
+
+      .preview-banner .banner-label {
+        margin-bottom: 3px;
+        padding-right: 0;
+        border-right: 0;
+      }
+
+      .demo-toolbar {
+        padding: 10px 16px;
+      }
+
+      .workspace {
+        padding: 26px 14px 40px;
+      }
+
+      .workspace-heading {
+        margin-bottom: 20px;
+      }
+
+      #conversationView .conversation-column {
+        padding: 0 18px 24px;
+      }
+
+      #conversationView .thread {
+        padding-top: 34px;
+      }
+
+      #conversationView .message.user .message-bubble {
+        font-size: 1.45rem;
+      }
+
+      #conversationView .context-panel {
+        min-height: auto;
+      }
+
+      #workflowView .step-panel {
+        padding: 32px 18px 44px;
+      }
+
+      #workflowView .draft-area {
+        min-height: 390px;
+        font-size: 0.94rem;
+      }
+
+      #workflowView .step-summary {
+        display: block;
+      }
+    }
+  </style>
+</head>
+<body data-demo-state="normal" data-mode="conversation">
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">일</div>
+      <div class="brand-copy">
+        <strong>직원 업무 도우미</strong>
+        <span>정책을 확인하고 문의 내용을 준비합니다</span>
+      </div>
+    </div>
+    <div class="mode-switch" role="group" aria-label="화면 보기 방식 선택">
+      <button type="button" data-mode="conversation" aria-pressed="true">A · 정책 읽기</button>
+      <button type="button" data-mode="workflow" aria-pressed="false">B · 문의 작성</button>
+    </div>
+  </header>
+
+  <div class="preview-banner">
+    <span class="banner-label"><span class="banner-dot" aria-hidden="true"></span>로컬 첫 흐름</span>
+    <span>고정된 GitLab 공개 표본을 실제 키워드로 찾습니다 · 문구는 규칙으로 만들며 모델·내부 조회·발송은 사용하지 않습니다</span>
+  </div>
+
+  <div class="demo-toolbar">
+    <div class="demo-toolbar-copy">
+      <strong>검색 자료 확인</strong>
+      <span>개발 확인 버튼은 노트북의 핵심 표본을 실제 검색 자료에서 빼거나 되돌립니다.</span>
+    </div>
+    <div class="state-switch" role="group" aria-label="미리보기 상태 선택">
+      <button type="button" data-demo-state-button="normal" aria-pressed="true">전체 표본으로 확인</button>
+      <button type="button" data-demo-state-button="loading" aria-pressed="false">현재 조건으로 다시 확인</button>
+      <button type="button" data-demo-state-button="missing" aria-pressed="false">노트북 핵심 표본 제외</button>
+    </div>
+  </div>
+
+  <div id="connectionNotice" class="state-card warning" role="alert" hidden>
+    <h2>로컬 처리 서버와 연결하지 못했습니다</h2>
+    <p>정상 답변으로 바꾸지 않았습니다. 작성 중인 문의 글은 화면에 남아 있으며 연결을 확인한 뒤 다시 시도할 수 있습니다.</p>
+    <div class="card-actions"><button type="button" class="button brand" data-retry>다시 연결하기</button></div>
+  </div>
+
+  <div id="inputChangedNotice" class="state-card warning" role="status" hidden>
+    <h2>입력한 내용이 제안을 만든 뒤 바뀌었습니다</h2>
+    <p>이전 입력으로 만든 제안은 현재 문의 글에 반영할 수 없습니다. 작성 중인 글은 그대로 두었으니 현재 입력으로 새 제안을 만들어 확인해 주세요.</p>
+    <div class="card-actions"><button type="button" class="button brand" data-apply-conditions>현재 입력으로 새 제안 만들기</button></div>
+  </div>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="직원 메뉴">
+      <button type="button" class="primary-action" data-new-inquiry><span aria-hidden="true">＋</span> 새 문의</button>
+      <div class="sidebar-section">
+        <p class="sidebar-label">현재 예시</p>
+        <div class="scenario-item" aria-current="page">
+          <span class="scenario-icon" aria-hidden="true">장비</span>
+          <span>
+            <strong>모니터·노트북 문의</strong>
+            <small>공개 정책을 이용한 대표 장면</small>
+          </span>
+        </div>
+      </div>
+      <p class="sidebar-note">저장된 문의 내역을 보여 주는 화면은 아닙니다. 현재는 장비 문의 한 가지 예시만 살펴볼 수 있습니다.</p>
+    </aside>
+
+    <main class="workspace" id="main-content">
+      <section class="experience-view" id="conversationView">
+        <div class="workspace-heading">
+          <div>
+            <h1>정책을 읽으며 확인하기</h1>
+            <p>답을 읽고 오른쪽에서 참고한 문서를 함께 확인해 보세요.</p>
+          </div>
+          <span class="recommendation">A · 읽기 우선</span>
+        </div>
+
+        <div class="conversation-layout">
+          <section class="conversation-column" aria-label="질문과 답">
+            <div class="thread-header">
+              <strong>장비 정책 / 현재 문의</strong>
+              <span>공개 정책 사례</span>
+            </div>
+            <div class="thread">
+              <div class="message user">
+                <span class="message-label">내 질문</span>
+                <div class="message-bubble">재택용 모니터와 느려진 회사 노트북을 같이 바꾸고 싶은데, 같은 경비 신청으로 처리하면 돼?</div>
+              </div>
+
+              <div class="state-only state-normal">
+                <div class="message assistant">
+                  <span class="message-label">답변 예시</span>
+                  <div class="message-bubble">
+                    <div class="answer-block">
+                      <h3><span class="signal confirmed" aria-hidden="true">✓</span> 지금 답할 수 있는 내용</h3>
+                      <p data-answer-text>검색 결과를 불러오고 있습니다.</p>
+                    </div>
+                    <div class="answer-block">
+                      <h3><span class="signal unknown" aria-hidden="true">?</span> 아직 확인해야 하는 내용</h3>
+                      <p>두 요청을 한 화면에서 같이 신청할 수 있는지, 개인의 남은 수당과 실제 refresh 자격·승인 상태는 공개 정책만으로 알 수 없습니다.</p>
+                    </div>
+                    <div class="inline-actions">
+                      <button type="button" class="button" data-open-panel="evidence">참고한 문서 보기</button>
+                      <button type="button" class="button brand" data-open-panel="draft">문의 글 열기</button>
+                    </div>
+                  </div>
+                </div>
+
+                <section class="condition-card" aria-label="내 상황 추가하기">
+                  <div class="condition-card-header">
+                    <div>
+                      <h2>내 상황을 추가하면 문의 글이 더 구체적으로 바뀝니다</h2>
+                      <p>직접 입력한 내용이며 내부 시스템에서 확인한 정보는 아닙니다.</p>
+                    </div>
+                    <span class="completion-pill" data-condition-count>0/3 입력</span>
+                  </div>
+                  <div class="field-grid">
+                    <label class="field">
+                      <span>재직 기간</span>
+                      <input type="text" data-field="tenure" placeholder="예: 4년">
+                    </label>
+                    <label class="field">
+                      <span>느려진 시점·상황</span>
+                      <input type="text" data-field="symptom" placeholder="예: 지난주부터 화상회의 중">
+                    </label>
+                    <label class="field">
+                      <span>구매 상태</span>
+                      <select data-field="purchase">
+                        <option value="">선택 안 함</option>
+                        <option value="not-purchased">아직 구매하지 않음</option>
+                        <option value="purchased">이미 구매함</option>
+                        <option value="unknown">확인 필요</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="card-actions">
+                    <button type="button" class="button brand" data-fill-conditions>예시 정보 넣기</button>
+                    <button type="button" class="button" data-apply-conditions>새 제안 만들기</button>
+                    <button type="button" class="button ghost" data-clear-conditions>입력 내용 비우기</button>
+                  </div>
+                  <p class="condition-footnote"><strong>문의 글</strong>에 필요한 내용을 모두 채워도 개인 자격과 구매 승인이 확인된 것은 아닙니다.</p>
+                </section>
+              </div>
+
+              <div class="state-only state-loading">
+                <div class="state-card loading" role="status" aria-live="polite">
+                  <h2>관련 문서를 확인하고 있습니다 <span class="muted">(미리보기)</span></h2>
+                  <p>문서를 확인하는 동안에는 답변과 문의 글을 완성하지 않습니다. 이 화면에서는 실제 검색을 실행하지 않습니다.</p>
+                  <div class="loading-line"></div>
+                  <div class="loading-line short"></div>
+                </div>
+              </div>
+
+              <div class="state-only state-missing">
+                <div class="state-card warning" role="status">
+                  <h2>노트북 교체에 관한 문서를 확인하지 못했습니다 <span class="muted">(미리보기)</span></h2>
+                  <p><span data-missing-monitor-answer>모니터 구매 경로는 확인했습니다.</span> 노트북에 필요한 핵심 표본이 빠져 있어 정책이 없다고 답하거나 새 IT 문의 글을 완성하지 않습니다.</p>
+                  <div class="card-actions">
+                    <button type="button" class="button brand" data-retry>문서 다시 확인하기</button>
+                    <a class="button" href="https://handbook.gitlab.com/handbook/finance/expenses/" target="_blank" rel="noreferrer">공개 문서 열기</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <aside class="context-panel" aria-label="참고한 문서와 문의 글">
+            <div class="panel-header">
+              <div class="panel-header-copy">
+                <strong>참고 문서와 문의 글</strong>
+                <span>답과 함께 확인해 보세요</span>
+              </div>
+              <div class="tab-list" role="tablist" aria-label="보조 패널">
+                <button type="button" role="tab" data-panel-tab="evidence" aria-selected="true">참고한 문서</button>
+                <button type="button" role="tab" data-panel-tab="draft" aria-selected="false">문의 글</button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="panel-content" data-panel-content="evidence">
+                <div class="state-only state-normal">
+                  <article class="source-card">
+                    <span class="eyebrow">공개 정책 · 모니터</span>
+                    <h3>Equipment · Approved WFH Equipment List</h3>
+                    <p>모니터가 승인된 WFH 장비 목록에 있고 추가 모니터도 수당 대상이 될 수 있다고 설명합니다.</p>
+                    <div class="source-meta">
+                      <span>2026-09-22 열람</span>
+                      <a href="https://handbook.gitlab.com/handbook/finance/expenses/" target="_blank" rel="noreferrer">공개 문서 열기 ↗</a>
+                    </div>
+                  </article>
+                  <article class="source-card">
+                    <span class="eyebrow">공개 정책 · 노트북</span>
+                    <h3>Laptops, insurance and repairs</h3>
+                    <p>3년 재직 후 refresh 가능성과 손상 교체 전 IT issue 문의를 설명합니다. 느림에 따른 자동 승인을 뜻하지는 않습니다.</p>
+                    <div class="source-meta">
+                      <span>2026-09-22 열람</span>
+                      <a href="https://handbook.gitlab.com/handbook/finance/expenses/" target="_blank" rel="noreferrer">공개 문서 열기 ↗</a>
+                    </div>
+                  </article>
+                  <p class="draft-footnote">페이지 수정일과 장비 정책의 시행일은 같다고 볼 수 없습니다. 이 문서는 실제 적용 조직의 최종 정책이 아닌 공개 사례입니다.</p>
+                </div>
+                <div class="state-only state-loading">
+                  <div class="state-card loading">
+                    <h2>참고할 문서를 확인하고 있습니다 <span class="muted">(미리보기)</span></h2>
+                    <p>문서의 출처와 적용 조건을 함께 확인한 뒤 답변에 표시합니다.</p>
+                    <div class="loading-line"></div>
+                    <div class="loading-line short"></div>
+                  </div>
+                </div>
+                <div class="state-only state-missing">
+                  <article class="source-card">
+                    <span class="eyebrow">확인한 문서 · 모니터</span>
+                    <h3>Equipment · Approved WFH Equipment List</h3>
+                    <p>모니터의 WFH 장비 경로는 확인했습니다.</p>
+                    <div class="source-meta">
+                      <span>공개 문서 사례</span>
+                      <a href="https://handbook.gitlab.com/handbook/finance/expenses/" target="_blank" rel="noreferrer">공개 문서 열기 ↗</a>
+                    </div>
+                  </article>
+                  <article class="source-card missing">
+                    <span class="eyebrow">문서 미확인 · 노트북</span>
+                    <h3>답변을 확정하지 않습니다</h3>
+                    <p>검색 오류인지 준비된 자료에 없는 것인지 아직 알 수 없습니다. 정책이 없다고 단정하지 않습니다.</p>
+                  </article>
+                </div>
+              </div>
+
+              <div class="panel-content" data-panel-content="draft" hidden>
+                <div class="state-only state-normal">
+                  <div class="draft-switch" role="tablist" aria-label="문의 글 종류">
+                    <button type="button" role="tab" data-draft-tab="monitor" aria-selected="true">모니터 문의</button>
+                    <button type="button" role="tab" data-draft-tab="it" aria-selected="false">IT 문의</button>
+                  </div>
+                  <div class="draft-pane" data-draft-pane="monitor">
+                    <div class="draft-label">
+                      <label for="conversationMonitorDraft">경비 정책 문의 글</label>
+                      <span>직접 수정 가능 · 발송 안 함</span>
+                    </div>
+                    <textarea id="conversationMonitorDraft" class="draft-area" data-draft-area="monitor" spellcheck="false"></textarea>
+                    <div class="card-actions">
+                      <button type="button" class="button brand" data-copy-draft="monitor">문의 글 복사</button>
+                      <button type="button" class="button" data-reset-draft="monitor">현재 제안 반영하기</button>
+                    </div>
+                  </div>
+                  <div class="draft-pane" data-draft-pane="it" hidden>
+                    <div class="draft-label">
+                      <label for="conversationItDraft">IT 문의 글</label>
+                      <span>직접 수정 가능 · 발송 안 함</span>
+                    </div>
+                    <textarea id="conversationItDraft" class="draft-area" data-draft-area="it" spellcheck="false"></textarea>
+                    <div class="card-actions">
+                      <button type="button" class="button brand" data-copy-draft="it">문의 글 복사</button>
+                      <button type="button" class="button" data-apply-conditions>새 제안 만들기</button>
+                      <button type="button" class="button" data-reset-draft="it">현재 제안 반영하기</button>
+                    </div>
+                    <ul class="origin-list" aria-label="문의 글에 포함된 정보">
+                      <li><strong>입력한 내용</strong><span data-stated-facts>재직 기간·느려진 상황·구매 상태를 아직 입력하지 않았습니다.</span></li>
+                      <li><strong>참고한 정책</strong><span>공개 정책의 3년 refresh 조건</span></li>
+                      <li><strong>아직 미확인</strong><span>실제 자격·승인·내부 처리 상태</span></li>
+                    </ul>
+                  </div>
+                  <p class="draft-footnote">복사가 허용되지 않으면 글 전체를 선택해 직접 복사할 수 있게 안내합니다.</p>
+                </div>
+                <div class="state-only state-loading">
+                  <div class="state-card loading">
+                    <h2>문의 글을 아직 완성하지 않습니다</h2>
+                    <p>참고할 문서와 필요한 정보가 준비되기 전에는 완성된 문의처럼 보여 주지 않습니다.</p>
+                    <div class="loading-line"></div>
+                  </div>
+                </div>
+                <div class="state-only state-missing">
+                  <div class="draft-switch" role="tablist" aria-label="문서를 일부 확인하지 못한 상태의 문의 글 종류">
+                    <button type="button" role="tab" data-draft-tab="monitor" aria-selected="true">모니터 문의</button>
+                    <button type="button" role="tab" data-draft-tab="it" aria-selected="false">IT 문의</button>
+                  </div>
+                  <div class="draft-pane" data-draft-pane="monitor">
+                    <div class="draft-label">
+                      <label for="conversationMissingMonitorDraft">경비 정책 문의 글</label>
+                      <span>모니터 문서 확인 · 발송 안 함</span>
+                    </div>
+                    <textarea id="conversationMissingMonitorDraft" class="draft-area" data-draft-area="monitor" spellcheck="false"></textarea>
+                    <div class="card-actions">
+                      <button type="button" class="button brand" data-copy-draft="monitor">모니터 문의 글 복사</button>
+                      <button type="button" class="button" data-reset-draft="monitor">현재 제안 반영하기</button>
+                    </div>
+                  </div>
+                  <div class="draft-pane" data-draft-pane="it" hidden>
+                    <div class="state-card warning">
+                      <h2>노트북 IT 문의 글은 잠시 보류합니다</h2>
+                      <p>입력한 느려짐 정보는 남아 있지만, 노트북 교체에 참고할 문서를 확인하지 못했습니다. 문서를 다시 확인하기 전에는 완성된 IT 문의처럼 보여 주지 않습니다.</p>
+                      <div class="card-actions">
+                        <button type="button" class="button brand" data-retry>노트북 문서 다시 확인하기</button>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="draft-footnote">확인한 문서가 있는 모니터 문의 글은 계속 수정하고 복사할 수 있습니다. 새 연락처나 개인 승인 상태는 지어내지 않습니다.</p>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="experience-view" id="workflowView" hidden>
+        <div class="workspace-heading">
+          <div>
+            <h1>문의 글을 작성하기</h1>
+            <p>문의 글을 바로 고치고, 필요한 문서와 입력한 내용을 옆에서 확인해 보세요.</p>
+          </div>
+          <span class="recommendation">B · 작성 우선</span>
+        </div>
+
+        <div class="workflow-layout">
+          <nav class="step-rail" aria-label="문의 준비 단계">
+            <p class="step-rail-title">작업 보기</p>
+            <button type="button" class="step-button" data-step="1">
+              <span class="step-number">04</span>
+              <span><strong>질문 확인</strong><small>무엇을 원하는지</small></span>
+            </button>
+            <button type="button" class="step-button" data-step="2">
+              <span class="step-number">03</span>
+              <span><strong>내 상황</strong><small>직접 입력한 내용</small></span>
+            </button>
+            <button type="button" class="step-button" data-step="3">
+              <span class="step-number">02</span>
+              <span><strong>답변과 문서</strong><small>확인·미확인 구분</small></span>
+            </button>
+            <button type="button" class="step-button" data-step="4" aria-current="step">
+              <span class="step-number">01</span>
+              <span><strong>문의 글</strong><small>수정하고 복사</small></span>
+            </button>
+          </nav>
+
+          <section class="step-stage">
+            <div class="stage-header">
+              <strong data-stage-title>01 · 문의 글 편집</strong>
+              <span>현재 장비 문의</span>
+            </div>
+
+            <article class="step-panel" data-step-panel="1">
+              <h2>질문에서 필요한 일을 먼저 확인합니다</h2>
+              <p>모니터와 회사 노트북의 일반적인 처리 방법을 알아보고, 필요한 경우 담당자에게 보낼 문의 글을 준비하려는 질문입니다.</p>
+              <div class="question-card">
+                <span class="eyebrow">입력한 질문</span>
+                <p>재택용 모니터와 느려진 회사 노트북을 같이 바꾸고 싶은데, 같은 경비 신청으로 처리하면 돼?</p>
+              </div>
+              <div class="difference-card">
+                <h3>질문에 이미 들어 있는 내용</h3>
+                <p>모니터 구매와 느려진 회사 노트북 전체의 교체를 묻고 있습니다. 모니터 종류나 배터리에 관한 문의인지 다시 묻지 않습니다.</p>
+              </div>
+              <div class="step-actions">
+                <button type="button" class="button brand" data-go-step="2">내 상황 추가하기 →</button>
+              </div>
+            </article>
+
+            <article class="step-panel" data-step-panel="2" hidden>
+              <h2>일반적인 안내를 먼저 보고, 필요할 때만 내 상황을 더합니다</h2>
+              <p>아래 내용은 화면을 살펴보기 위한 예시 정보입니다. 문의 글을 준비하는 데 쓸 수 있지만, 개인 자격이나 승인이 확인된 것은 아닙니다.</p>
+              <div class="condition-card">
+                <div class="condition-card-header">
+                  <div>
+                    <h2>입력한 내용</h2>
+                    <p>내부 시스템에서 조회하거나 확인한 정보는 아닙니다.</p>
+                  </div>
+                  <span class="completion-pill" data-condition-count>0/3 입력</span>
+                </div>
+                <div class="field-grid">
+                  <label class="field">
+                    <span>재직 기간</span>
+                    <input type="text" data-field="tenure" placeholder="예: 4년">
+                  </label>
+                  <label class="field">
+                    <span>느려진 시점·상황</span>
+                    <input type="text" data-field="symptom" placeholder="예: 지난주부터 화상회의 중">
+                  </label>
+                  <label class="field">
+                    <span>구매 상태</span>
+                    <select data-field="purchase">
+                      <option value="">선택 안 함</option>
+                      <option value="not-purchased">아직 구매하지 않음</option>
+                      <option value="purchased">이미 구매함</option>
+                      <option value="unknown">확인 필요</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="card-actions">
+                  <button type="button" class="button brand" data-fill-conditions>예시 정보 넣기</button>
+                  <button type="button" class="button" data-apply-conditions>새 제안 만들기</button>
+                  <button type="button" class="button ghost" data-clear-conditions>입력 내용 비우기</button>
+                </div>
+              </div>
+              <div class="step-actions">
+                <button type="button" class="button" data-go-step="1">← 질문</button>
+                <button type="button" class="button brand" data-go-step="3">답변과 참고 문서 보기 →</button>
+              </div>
+            </article>
+
+            <article class="step-panel" data-step-panel="3" hidden>
+              <h2>일반적인 안내와 아직 확인되지 않은 내용을 나눠 봅니다</h2>
+              <p>공개 문서에서 확인한 조건과 직접 입력한 내용을 구분해서 보여 줍니다.</p>
+              <div class="state-only state-normal">
+                <ul class="result-list">
+                  <li><span class="check">✓</span><span><strong>모니터:</strong> 공개 정책에서는 WFH 장비·수당 경로를 안내합니다.</span></li>
+                  <li><span class="check">✓</span><span><strong>노트북:</strong> 3년 refresh 조건과 IT 경로가 있지만, 느림만으로 승인을 확정할 수 없습니다.</span></li>
+                  <li><span class="check">?</span><span><strong>아직 미확인:</strong> 남은 수당, 실제 자격·승인, 두 요청을 한 신청에 묶는 내부 방식.</span></li>
+                </ul>
+                <div class="card-actions">
+                  <a class="button" href="https://handbook.gitlab.com/handbook/finance/expenses/" target="_blank" rel="noreferrer">GitLab 공개 문서 열기 ↗</a>
+                </div>
+              </div>
+              <div class="state-only state-loading">
+                <div class="state-card loading">
+                  <h2>관련 문서를 확인하고 있습니다 <span class="muted">(미리보기)</span></h2>
+                  <p>문서의 출처와 적용 조건을 확인한 뒤 답변을 표시합니다.</p>
+                  <div class="loading-line"></div>
+                  <div class="loading-line short"></div>
+                </div>
+              </div>
+              <div class="state-only state-missing">
+                <div class="state-card warning">
+                  <h2>모니터 구매에 관한 문서만 확인했습니다 <span class="muted">(미리보기)</span></h2>
+                  <p>노트북 교체에 관한 문서는 확인하지 못했습니다. 검색 오류인지 준비된 자료에 없는 것인지 알기 전에는 정책이 없다고 답하지 않습니다.</p>
+                  <div class="card-actions">
+                    <button type="button" class="button brand" data-retry>문서 다시 확인하기</button>
+                    <a class="button" href="https://handbook.gitlab.com/handbook/finance/expenses/" target="_blank" rel="noreferrer">공개 문서 열기</a>
+                  </div>
+                </div>
+              </div>
+              <div class="step-actions">
+                <button type="button" class="button" data-go-step="2">← 내 상황</button>
+                <button type="button" class="button brand" data-go-step="4">문의 글 보기 →</button>
+              </div>
+            </article>
+
+            <article class="step-panel" data-step-panel="4" hidden>
+              <h2>문의 글을 직접 고치고 복사해 보세요</h2>
+              <p>확인한 내용과 빈칸을 살펴보며 고칠 수 있습니다. 다른 화면으로 이동해도 수정한 내용은 그대로 남습니다.</p>
+              <div class="state-only state-normal">
+                <div class="draft-switch" role="tablist" aria-label="문의 글 종류">
+                  <button type="button" role="tab" data-draft-tab="monitor" aria-selected="true">모니터 문의</button>
+                  <button type="button" role="tab" data-draft-tab="it" aria-selected="false">IT 문의</button>
+                </div>
+                <div class="draft-pane" data-draft-pane="monitor">
+                  <div class="draft-label">
+                    <label for="workflowMonitorDraft">경비 정책 문의 글</label>
+                    <span>직접 수정 가능 · 발송 안 함</span>
+                  </div>
+                  <textarea id="workflowMonitorDraft" class="draft-area" data-draft-area="monitor" spellcheck="false"></textarea>
+                  <div class="card-actions">
+                    <button type="button" class="button brand" data-copy-draft="monitor">문의 글 복사</button>
+                    <button type="button" class="button" data-reset-draft="monitor">현재 제안 반영하기</button>
+                  </div>
+                </div>
+                <div class="draft-pane" data-draft-pane="it" hidden>
+                  <div class="draft-label">
+                    <label for="workflowItDraft">IT 문의 글</label>
+                    <span>직접 수정 가능 · 발송 안 함</span>
+                  </div>
+                  <textarea id="workflowItDraft" class="draft-area" data-draft-area="it" spellcheck="false"></textarea>
+                  <div class="card-actions">
+                    <button type="button" class="button brand" data-copy-draft="it">문의 글 복사</button>
+                    <button type="button" class="button" data-apply-conditions>새 제안 만들기</button>
+                    <button type="button" class="button" data-reset-draft="it">현재 제안 반영하기</button>
+                  </div>
+                  <ul class="origin-list">
+                    <li><strong>입력한 내용</strong><span data-stated-facts>재직 기간·느려진 상황·구매 상태를 아직 입력하지 않았습니다.</span></li>
+                    <li><strong>참고한 정책</strong><span>공개 정책의 3년 refresh 조건</span></li>
+                    <li><strong>아직 미확인</strong><span>실제 자격·승인·내부 처리 상태</span></li>
+                  </ul>
+                </div>
+              </div>
+              <div class="state-only state-loading">
+                <div class="state-card loading">
+                  <h2>답변을 준비하는 동안 문의 글을 완성하지 않습니다</h2>
+                  <p>입력한 질문은 남겨 두지만, 확인하지 않은 정책 내용을 채워 넣지 않습니다.</p>
+                  <div class="loading-line"></div>
+                </div>
+              </div>
+              <div class="state-only state-missing">
+                <div class="draft-switch" role="tablist" aria-label="문서를 일부 확인하지 못한 상태의 문의 글 종류">
+                  <button type="button" role="tab" data-draft-tab="monitor" aria-selected="true">모니터 문의</button>
+                  <button type="button" role="tab" data-draft-tab="it" aria-selected="false">IT 문의</button>
+                </div>
+                <div class="draft-pane" data-draft-pane="monitor">
+                  <div class="draft-label">
+                    <label for="workflowMissingMonitorDraft">경비 정책 문의 글</label>
+                    <span>모니터 문서 확인 · 발송 안 함</span>
+                  </div>
+                  <textarea id="workflowMissingMonitorDraft" class="draft-area" data-draft-area="monitor" spellcheck="false"></textarea>
+                  <div class="card-actions">
+                    <button type="button" class="button brand" data-copy-draft="monitor">모니터 문의 글 복사</button>
+                    <button type="button" class="button" data-reset-draft="monitor">현재 제안 반영하기</button>
+                  </div>
+                </div>
+                <div class="draft-pane" data-draft-pane="it" hidden>
+                  <div class="state-card warning">
+                    <h2>노트북 IT 문의 글은 잠시 보류합니다</h2>
+                    <p>입력한 느려짐 정보는 남아 있지만, 노트북 교체에 참고할 문서를 확인하지 못했습니다. 문서를 다시 확인하기 전에는 완성된 IT 문의처럼 보여 주지 않습니다.</p>
+                    <div class="card-actions">
+                      <button type="button" class="button brand" data-retry>노트북 문서 다시 확인하기</button>
+                    </div>
+                  </div>
+                </div>
+                <p class="draft-footnote">확인한 문서가 있는 모니터 문의 글은 계속 수정하고 복사할 수 있습니다. 새 연락처나 개인 승인 상태는 지어내지 않습니다.</p>
+              </div>
+              <div class="step-actions">
+                <button type="button" class="button" data-go-step="3">답변과 참고 문서 보기</button>
+              </div>
+            </article>
+          </section>
+
+          <aside class="step-summary" aria-label="현재 문의 상태">
+            <h2>현재 문의 상태</h2>
+            <div class="summary-row">
+              <span>참고 문서</span>
+              <strong data-summary-evidence>모니터·노트북 문서</strong>
+            </div>
+            <div class="summary-row">
+              <span>입력한 내용</span>
+              <strong data-condition-count>0/3 입력</strong>
+            </div>
+            <div class="summary-row">
+              <span>개인 승인</span>
+              <strong>미확인</strong>
+            </div>
+            <p class="summary-note">내용을 모두 채워도 문의 글을 준비한 상태일 뿐입니다. 신청·발송·구매 승인을 대신하지 않습니다.</p>
+            <div class="step-actions">
+              <button type="button" class="button brand" data-go-step="4">문의 글로 이동</button>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
