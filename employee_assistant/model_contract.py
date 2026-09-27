@@ -13,10 +13,10 @@ import hashlib
 import json
 from typing import Any
 
-from .flow import SECTION_ROLES
+from .flow import INQUIRY_SCOPES, LAPTOP_INQUIRY_GOALS, SECTION_ROLES
 
 
-INPUT_SCHEMA_VERSION = "employee-assistant.model-input.v1"
+INPUT_SCHEMA_VERSION = "employee-assistant.model-input.v3"
 PROPOSAL_SCHEMA_VERSION = "employee-assistant.model-proposal.v1"
 BRANCH_NAMES = ("monitor", "laptop")
 
@@ -140,6 +140,26 @@ def assemble_model_input(response: dict[str, Any]) -> dict[str, Any]:
     user_text = _expect_string(
         request.get("user_text"), "response.request.user_text"
     )
+    laptop_inquiry_goal = _expect_string(
+        request.get("laptop_inquiry_goal"),
+        "response.request.laptop_inquiry_goal",
+    )
+    if laptop_inquiry_goal not in LAPTOP_INQUIRY_GOALS:
+        raise ModelContractError(
+            "unsupported_laptop_inquiry_goal",
+            "response.request.laptop_inquiry_goal",
+            "laptop inquiry goal is not supported",
+        )
+    inquiry_scope = _expect_string(
+        request.get("inquiry_scope"),
+        "response.request.inquiry_scope",
+    )
+    if inquiry_scope not in INQUIRY_SCOPES:
+        raise ModelContractError(
+            "unsupported_inquiry_scope",
+            "response.request.inquiry_scope",
+            "inquiry scope is not supported",
+        )
     for key, value in employee_facts.items():
         _expect_string(key, "response.request.employee_facts key")
         _expect_string(
@@ -245,9 +265,19 @@ def assemble_model_input(response: dict[str, Any]) -> dict[str, Any]:
             )
             for index, item in enumerate(selected)
         ]
+        branch_status = _expect_string(
+            raw_branch.get("status"), f"response.branches.{branch_name}.status"
+        )
         branches[branch_name] = {
-            "generation_allowed": raw_branch.get("status")
-            == "ready_rule_composed",
+            "selected": branch_status != "not_selected",
+            "generation_allowed": branch_status == "ready_rule_composed",
+            "generation_block_reason": (
+                None
+                if branch_status == "ready_rule_composed"
+                else "not_selected"
+                if branch_status == "not_selected"
+                else "missing_required_evidence"
+            ),
             "retrieved_evidence_ids": retrieved_ids,
             "required_role_states": role_states,
             "unverified_items": list(UNVERIFIED_ITEMS[branch_name]),
@@ -257,6 +287,7 @@ def assemble_model_input(response: dict[str, Any]) -> dict[str, Any]:
         "schema_version": INPUT_SCHEMA_VERSION,
         "supported_inquiry": {
             "type": _expect_string(response.get("inquiry_type"), "response.inquiry_type"),
+            "scope": inquiry_scope,
             "label": _expect_string(response.get("support_label"), "response.support_label"),
             "selection": _expect_string(response.get("type_selection"), "response.type_selection"),
         },
@@ -275,6 +306,8 @@ def assemble_model_input(response: dict[str, Any]) -> dict[str, Any]:
         },
         "employee_input": {
             "user_text": user_text,
+            "inquiry_scope": inquiry_scope,
+            "laptop_inquiry_goal": laptop_inquiry_goal,
             "facts": copy.deepcopy(employee_facts),
             "trust": "untrusted_employee_content",
         },
@@ -284,7 +317,11 @@ def assemble_model_input(response: dict[str, Any]) -> dict[str, Any]:
             "evidence": evidence,
         },
         "branches": branches,
-        "cross_branch_unverified_items": list(UNVERIFIED_ITEMS["cross_branch"]),
+        "cross_branch_unverified_items": (
+            list(UNVERIFIED_ITEMS["cross_branch"])
+            if inquiry_scope == "both"
+            else []
+        ),
     }
     assembled["input_revision"] = _digest(assembled)
     return assembled

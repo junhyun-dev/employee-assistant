@@ -5,8 +5,15 @@
   var DB_VERSION = 1;
   var STORE_NAME = "drafts";
   var RECORD_ID = "active-draft";
-  var SCHEMA_VERSION = "employee-assistant.draft.v1";
+  var SCHEMA_VERSION = "employee-assistant.draft.v3";
+  var LEGACY_SCHEMA_VERSION_V1 = "employee-assistant.draft.v1";
+  var LEGACY_SCHEMA_VERSION_V2 = "employee-assistant.draft.v2";
+  var SUPPORTED_SCHEMA_VERSIONS = [LEGACY_SCHEMA_VERSION_V1, LEGACY_SCHEMA_VERSION_V2, SCHEMA_VERSION];
   var INQUIRY_TYPE = "monitor_and_laptop_replacement";
+  var DEFAULT_LEGACY_LAPTOP_INQUIRY_GOAL = "replacement_process";
+  var DEFAULT_LEGACY_INQUIRY_SCOPE = "both";
+  var LAPTOP_INQUIRY_GOALS = ["before_replacement", "replacement_process"];
+  var INQUIRY_SCOPES = ["both", "monitor", "laptop"];
   var TTL_MS = 24 * 60 * 60 * 1000;
   var opaqueGuards = new Map();
   var nextOpaqueGuard = 0;
@@ -42,9 +49,14 @@
     return Number.isFinite(parsed) ? parsed : NaN;
   }
 
-  function validatePayload(payload) {
-    if (!hasExactKeys(payload, ["inquiry_type", "employee_input", "drafts", "edit_meta", "ui"])) return false;
+  function validatePayload(payload, schemaVersion) {
+    var payloadKeys = ["inquiry_type", "employee_input", "drafts", "edit_meta", "ui"];
+    if (schemaVersion !== LEGACY_SCHEMA_VERSION_V1) payloadKeys.push("laptop_inquiry_goal");
+    if (schemaVersion === SCHEMA_VERSION) payloadKeys.push("inquiry_scope");
+    if (!hasExactKeys(payload, payloadKeys)) return false;
     if (payload.inquiry_type !== INQUIRY_TYPE) return false;
+    if (schemaVersion !== LEGACY_SCHEMA_VERSION_V1 && !LAPTOP_INQUIRY_GOALS.includes(payload.laptop_inquiry_goal)) return false;
+    if (schemaVersion === SCHEMA_VERSION && !INQUIRY_SCOPES.includes(payload.inquiry_scope)) return false;
     if (!hasExactKeys(payload.employee_input, ["tenure", "symptom", "purchase"])) return false;
     if (!isLimitedString(payload.employee_input.tenure, 80)) return false;
     if (!isLimitedString(payload.employee_input.symptom, 500)) return false;
@@ -61,17 +73,19 @@
 
   function validateSnapshot(record) {
     if (!hasExactKeys(record, ["id", "kind", "schema_version", "revision", "saved_at", "expires_at", "payload"])) return false;
-    if (record.id !== RECORD_ID || record.kind !== "snapshot" || record.schema_version !== SCHEMA_VERSION) return false;
+    if (record.id !== RECORD_ID || record.kind !== "snapshot" ||
+        !SUPPORTED_SCHEMA_VERSIONS.includes(record.schema_version)) return false;
     if (!isValidRevision(record.revision)) return false;
     var savedAt = parseTime(record.saved_at);
     var expiresAt = parseTime(record.expires_at);
     if (!Number.isFinite(savedAt) || !Number.isFinite(expiresAt) || expiresAt - savedAt !== TTL_MS) return false;
-    return validatePayload(record.payload);
+    return validatePayload(record.payload, record.schema_version);
   }
 
   function validateTombstone(record) {
     return hasExactKeys(record, ["id", "kind", "schema_version", "revision", "updated_at"]) &&
-      record.id === RECORD_ID && record.kind === "empty" && record.schema_version === SCHEMA_VERSION &&
+      record.id === RECORD_ID && record.kind === "empty" &&
+      SUPPORTED_SCHEMA_VERSIONS.includes(record.schema_version) &&
       isValidRevision(record.revision) && Number.isFinite(parseTime(record.updated_at));
   }
 
@@ -85,6 +99,9 @@
       revision: record.revision,
       saved_at: record.saved_at,
       expires_at: record.expires_at,
+      schema_version: record.schema_version,
+      legacy_goal_defaulted: record.schema_version === LEGACY_SCHEMA_VERSION_V1,
+      legacy_scope_defaulted: record.schema_version !== SCHEMA_VERSION,
       opaque_token: null
     };
   }
@@ -95,6 +112,9 @@
       revision: revision,
       saved_at: null,
       expires_at: null,
+      schema_version: null,
+      legacy_goal_defaulted: false,
+      legacy_scope_defaulted: false,
       opaque_token: null
     };
   }
@@ -111,6 +131,17 @@
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
+  }
+
+  function normalizedPayload(record) {
+    var payload = clone(record.payload);
+    if (record.schema_version === LEGACY_SCHEMA_VERSION_V1) {
+      payload.laptop_inquiry_goal = DEFAULT_LEGACY_LAPTOP_INQUIRY_GOAL;
+    }
+    if (record.schema_version !== SCHEMA_VERSION) {
+      payload.inquiry_scope = DEFAULT_LEGACY_INQUIRY_SCOPE;
+    }
+    return payload;
   }
 
   function opaqueEqual(left, right, seen) {
@@ -183,7 +214,8 @@
   }
 
   function unreadableReason(record) {
-    return record && typeof record.schema_version === "string" && record.schema_version !== SCHEMA_VERSION
+    return record && typeof record.schema_version === "string" &&
+      !SUPPORTED_SCHEMA_VERSIONS.includes(record.schema_version)
       ? "unsupported_schema"
       : "invalid_record";
   }
@@ -194,6 +226,9 @@
       revision: current.revision,
       saved_at: null,
       expires_at: null,
+      schema_version: null,
+      legacy_goal_defaulted: false,
+      legacy_scope_defaulted: false,
       unreadable_reason: current.reason,
       opaque_token: rememberOpaqueRecord(current.record)
     };
@@ -313,7 +348,7 @@
   }
 
   function save(expectedRevision, payload) {
-    if (!validatePayload(payload)) return Promise.reject(storageError("invalid", "저장할 문의 내용의 형식이 올바르지 않습니다."));
+    if (!validatePayload(payload, SCHEMA_VERSION)) return Promise.reject(storageError("invalid", "저장할 문의 내용의 형식이 올바르지 않습니다."));
     var now = Date.now();
     return transact(function (record, store) {
       var current = classifyRecord(record, now);
@@ -351,7 +386,7 @@
       }
       ensureExpected(current.revision, expectedRevision);
       if (current.kind !== "snapshot") throw storageError(current.reason, "불러올 수 있는 임시 저장본이 없습니다.");
-      return { value: { metadata: metadata(current.record), payload: clone(current.record.payload) } };
+      return { value: { metadata: metadata(current.record), payload: normalizedPayload(current.record) } };
     }).then(function (result) {
       if (result.error) throw result.error;
       return result.value;

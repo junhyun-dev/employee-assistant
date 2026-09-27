@@ -18,6 +18,12 @@ from typing import Any, Iterable
 
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "gitlab-expenses-excerpts.json"
+DEFAULT_LAPTOP_INQUIRY_GOAL = "replacement_process"
+LAPTOP_INQUIRY_GOALS = frozenset(
+    {"before_replacement", "replacement_process"}
+)
+DEFAULT_INQUIRY_SCOPE = "both"
+INQUIRY_SCOPES = frozenset({"both", "monitor", "laptop"})
 
 
 class UnknownEvidenceId(ValueError):
@@ -45,11 +51,11 @@ SECTION_ROLES: dict[str, tuple[str, ...]] = {
 # which inquiry type the caller selected; this module does not classify free text.
 SUPPORTED_INQUIRY_TYPES: dict[str, dict[str, Any]] = {
     "monitor_and_laptop_replacement": {
-        "label": "재택용 모니터 구입과 회사 노트북 전체 교체 문의",
+        "label": "재택용 모니터 구입과 회사 노트북 문의",
         "selection": "caller_supplied_not_inferred",
         "manual_correspondence": {
             "모니터": ("monitor", "wfh", "home office", "additional", "purchase"),
-            "노트북 전체 교체": (
+            "노트북 문의": (
                 "laptop",
                 "replacement",
                 "refresh",
@@ -192,49 +198,81 @@ def _role_state(
     }
 
 
-def _purchase_sentence(value: str | None) -> str:
+def _entered_fact(employee_facts: dict[str, str], key: str) -> str | None:
+    value = employee_facts.get(key)
+    if not isinstance(value, str):
+        return None
+    entered = value.strip()
+    return entered or None
+
+
+def _purchase_sentence(value: str | None) -> str | None:
     if value == "not_purchased":
         return "새 기기를 구매하지 않았습니다."
     if value == "purchased":
         return "새 기기를 이미 구매했습니다."
     if value == "unknown":
-        return "새 기기 구매 여부는 확인이 필요합니다."
-    return "구매 상태는 [구매 전 / 구매 완료 / 확인 필요]입니다."
+        return "새 기기 구매 여부는 아직 확인하지 못했습니다."
+    return None
 
 
 def _monitor_output(employee_facts: dict[str, str]) -> tuple[str, str]:
     answer = (
-        "공개 표본에서는 추가 모니터를 WFH 수당으로 경비 처리할 수 있고 "
-        "모니터와 모니터 스탠드가 승인 품목 목록에 있습니다. 개인의 남은 "
-        "수당과 실제 처리 여부는 이 자료로 확인하지 못했습니다."
+        "공개 표본의 승인 WFH 장비 목록에 모니터와 모니터 스탠드가 있고, "
+        "추가 모니터는 Stipend/Allowance를 통한 검토·경비 처리 대상으로 "
+        "안내됩니다. 같은 표본의 기존 직원 연간 500 USD(또는 현지 통화 "
+        "상당액) home office refresh에는 직전 한 해 전체 재직 조건이 있습니다. "
+        "이 조건이 모든 모니터 구입 경로에 동일하게 적용되는지와 개인의 적용 "
+        "경로·잔액·실제 처리는 이 자료로 확인하지 못했습니다."
     )
-    employee_detail = employee_facts.get(
-        "monitor_employee_detail", "[신규/기존 직원, 입사일]"
-    )
-    draft = "\n".join(
+    employee_detail = _entered_fact(employee_facts, "monitor_employee_detail")
+    lines = []
+    if employee_detail:
+        lines.append(f"직원 정보: {employee_detail}")
+    lines.extend(
         (
-            f"저는 {employee_detail}이고 재택근무용 모니터 구입을 검토 중입니다.",
-            "공개 정책의 WFH 장비 목록은 확인했지만 제 수당 적용 여부와 남은 금액은 확인하지 못했습니다.",
-            "적용 가능 여부와 필요한 제출 정보를 확인 부탁드립니다.",
+            "재택근무용 모니터 구입을 검토 중입니다.",
+            "공개 문서에서 모니터가 승인 WFH 장비 목록에 있고 추가 모니터가 "
+            "Stipend/Allowance를 통한 검토·경비 처리 대상으로 안내되는 것을 "
+            "확인했습니다.",
+            "제게 적용되는 수당 경로와 이용 가능한 금액, 필요한 제출 정보를 확인 부탁드립니다.",
         )
     )
+    draft = "\n".join(lines)
     return answer, draft
 
 
-def _laptop_output(employee_facts: dict[str, str]) -> tuple[str, str]:
+def _laptop_output(
+    employee_facts: dict[str, str], laptop_inquiry_goal: str
+) -> tuple[str, str]:
     answer = (
         "공개 표본에는 3년 재직 뒤 노트북 refresh가 가능하고, 손상 교체는 "
         "구매 전에 IT issue로 문의하라고 적혀 있습니다. 느려진 노트북에 "
         "실제로 적용될 절차는 이 자료만으로 확인하지 못했습니다."
     )
-    tenure = employee_facts.get("tenure", "[기간]")
-    symptom = employee_facts.get("symptom", "[발생 시점과 구체적인 상태]")
-    purchase = _purchase_sentence(employee_facts.get("purchase_status"))
-    draft = (
-        f"{tenure}째 재직 중이며 회사 노트북이 {symptom} 느려졌습니다. "
-        f"{purchase} 공개 정책의 3년 refresh 조건을 참고해 제 상황에 적용될 "
-        "절차와 진행 방법을 확인 부탁드립니다."
-    )
+    tenure = _entered_fact(employee_facts, "tenure")
+    symptom = _entered_fact(employee_facts, "symptom")
+    purchase = _purchase_sentence(_entered_fact(employee_facts, "purchase_status"))
+    situation = "회사 노트북이"
+    if tenure:
+        situation = f"{tenure}째 재직 중이며 {situation}"
+    if symptom:
+        situation += f" {symptom} 느려졌습니다."
+    else:
+        situation += " 느려져 문의드립니다."
+    if laptop_inquiry_goal == "before_replacement":
+        request = (
+            "교체 여부를 정하기 전에, 증상을 확인하려면 어떤 정보를 더 드려야 "
+            "하는지와 다음 문의 절차를 안내 부탁드립니다."
+        )
+    elif laptop_inquiry_goal == "replacement_process":
+        request = (
+            "공개 정책의 3년 refresh 조건을 참고해 제 상황에 적용될 절차와 진행 "
+            "방법을 확인 부탁드립니다."
+        )
+    else:  # process_request rejects unsupported values before output is built.
+        raise ValueError(f"unsupported laptop inquiry goal: {laptop_inquiry_goal}")
+    draft = " ".join(part for part in (situation, purchase, request) if part)
     return answer, draft
 
 
@@ -244,14 +282,19 @@ def _proposal_revision(
     evidence_ids: list[str],
     employee_facts: dict[str, str],
     available_sections: list[dict[str, Any]],
+    laptop_inquiry_goal: str,
+    inquiry_scope: str,
 ) -> str:
     section_by_id = {section["id"]: section for section in available_sections}
     payload = {
         "branch": branch_name,
         "proposal_text": proposal_text,
         "employee_facts": employee_facts,
+        "inquiry_scope": inquiry_scope,
         "evidence": [section_by_id[evidence_id] for evidence_id in evidence_ids],
     }
+    if branch_name == "laptop":
+        payload["laptop_inquiry_goal"] = laptop_inquiry_goal
     encoded = json.dumps(
         payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
@@ -263,6 +306,8 @@ def _build_branch(
     branch_config: dict[str, Any],
     available_sections: list[dict[str, Any]],
     employee_facts: dict[str, str],
+    laptop_inquiry_goal: str,
+    inquiry_scope: str,
 ) -> dict[str, Any]:
     retrieval = _retrieve(
         available_sections,
@@ -310,7 +355,9 @@ def _build_branch(
     if branch_name == "monitor":
         answer_text, draft_text = _monitor_output(employee_facts)
     elif branch_name == "laptop":
-        answer_text, draft_text = _laptop_output(employee_facts)
+        answer_text, draft_text = _laptop_output(
+            employee_facts, laptop_inquiry_goal
+        )
     else:
         raise ValueError(f"no rule-composed output for branch: {branch_name}")
 
@@ -335,7 +382,38 @@ def _build_branch(
                 supporting_ids,
                 employee_facts,
                 available_sections,
+                laptop_inquiry_goal,
+                inquiry_scope,
             ),
+        },
+    }
+
+
+def _not_selected_branch() -> dict[str, Any]:
+    return {
+        "status": "not_selected",
+        "manual_query_terms": [],
+        "retrieval": {
+            "search_count": 0,
+            "result_budget": 0,
+            "positive_candidate_count": 0,
+            "selected": [],
+            "reason": "not_selected",
+        },
+        "required_role_states": [],
+        "missing_required_roles": [],
+        "answer": {
+            "status": "not_selected",
+            "text": None,
+            "evidence_ids": [],
+            "reason": "이번 문의 범위에서 선택하지 않은 갈래입니다.",
+        },
+        "draft_proposal": {
+            "status": "not_selected",
+            "text": None,
+            "evidence_ids": [],
+            "revision": None,
+            "reason": "이번 문의 범위에서 선택하지 않아 새 글을 제안하지 않습니다.",
         },
     }
 
@@ -368,18 +446,51 @@ def process_request(
             "note": "임의 질문의 유형과 필수 근거는 이 기준선이 추론하지 않습니다.",
         }
 
+    laptop_inquiry_goal = request.get(
+        "laptop_inquiry_goal", DEFAULT_LAPTOP_INQUIRY_GOAL
+    )
+    if (
+        not isinstance(laptop_inquiry_goal, str)
+        or laptop_inquiry_goal not in LAPTOP_INQUIRY_GOALS
+    ):
+        return {
+            "status": "unsupported_laptop_inquiry_goal",
+            "laptop_inquiry_goal": laptop_inquiry_goal,
+            "supported_laptop_inquiry_goals": sorted(LAPTOP_INQUIRY_GOALS),
+            "note": "노트북 문의 목적은 직원이 지원 값에서 명시적으로 선택해야 합니다.",
+        }
+
+    inquiry_scope = request.get("inquiry_scope", DEFAULT_INQUIRY_SCOPE)
+    if not isinstance(inquiry_scope, str) or inquiry_scope not in INQUIRY_SCOPES:
+        return {
+            "status": "unsupported_inquiry_scope",
+            "inquiry_scope": inquiry_scope,
+            "supported_inquiry_scopes": sorted(INQUIRY_SCOPES),
+            "note": "문의 범위는 지원 값에서 직원이 명시적으로 선택해야 합니다.",
+        }
+
     support = SUPPORTED_INQUIRY_TYPES[inquiry_type]
     excluded = set(excluded_evidence_ids)
     available_sections = [
         section for section in corpus["sections"] if section["id"] not in excluded
     ]
     employee_facts = request.get("employee_facts", {})
-    branches = {
-        branch_name: _build_branch(
-            branch_name, branch_config, available_sections, employee_facts
+    selected_branches = (
+        {"monitor", "laptop"} if inquiry_scope == "both" else {inquiry_scope}
+    )
+    branches = {}
+    for branch_name, branch_config in support["branches"].items():
+        if branch_name not in selected_branches:
+            branches[branch_name] = _not_selected_branch()
+            continue
+        branches[branch_name] = _build_branch(
+            branch_name,
+            branch_config,
+            available_sections,
+            employee_facts,
+            laptop_inquiry_goal,
+            inquiry_scope,
         )
-        for branch_name, branch_config in support["branches"].items()
-    }
 
     selected_ids = list(
         dict.fromkeys(
@@ -394,6 +505,9 @@ def process_request(
         "evidence_ids": selected_ids,
         "evidence": [section_by_id[evidence_id] for evidence_id in selected_ids],
     }
+    normalized_request = copy.deepcopy(request)
+    normalized_request["laptop_inquiry_goal"] = laptop_inquiry_goal
+    normalized_request["inquiry_scope"] = inquiry_scope
     response = {
         "status": "processed_supported_inquiry_type",
         "inquiry_type": inquiry_type,
@@ -403,12 +517,14 @@ def process_request(
             label: list(terms)
             for label, terms in support["manual_correspondence"].items()
         },
-        "request": copy.deepcopy(request),
+        "request": normalized_request,
         "excluded_evidence_ids": sorted(excluded),
         "material": material,
         "branches": branches,
         "limitations": [
             "문의 유형과 필요한 근거 역할은 사람이 미리 정의했습니다.",
+            "노트북 문의 목적은 지원 값에서 직원이 명시적으로 고르며 자유문장에서 추론하지 않습니다.",
+            "문의 범위는 지원 값에서 직원이 명시적으로 고르며 선택 밖 갈래는 검색하거나 생성하지 않습니다.",
             "한국어 질문을 일반적으로 해석하거나 번역하지 않습니다.",
             "답과 문의 글은 고정 규칙으로 구성하며 모델 생성이 아닙니다.",
             "구조 검사는 근거 ID의 요청별 포함 여부만 확인하고 문장 의미 정합성은 확인하지 않습니다.",
@@ -448,7 +564,11 @@ def create_workspace(
                 "employee_edited": False,
                 "source_evidence_ids": [],
                 "source_proposal_revision": None,
-                "support_status": "no_policy_based_proposal",
+                "support_status": (
+                    "not_selected_preserved_for_reselection"
+                    if branch["status"] == "not_selected"
+                    else "no_policy_based_proposal"
+                ),
                 "applied_from_response_revision": None,
             }
     return {"revision": 1, "response": response, "drafts": drafts}
@@ -462,7 +582,9 @@ def edit_draft(
     draft["employee_text"] = employee_text
     draft["employee_edited"] = True
     branch = updated["response"]["branches"][branch_name]
-    if branch["status"] == "ready_rule_composed":
+    if branch["status"] == "not_selected":
+        draft["support_status"] = "not_selected_preserved_for_reselection"
+    elif branch["status"] == "ready_rule_composed":
         draft["support_status"] = "current_evidence_available_semantics_not_checked"
     else:
         draft["support_status"] = "previous_text_not_supported_by_current_evidence"
@@ -487,8 +609,27 @@ def refresh_workspace(
     for branch_name, draft in updated["drafts"].items():
         branch = updated["response"]["branches"][branch_name]
         proposal = branch["draft_proposal"]
+        if branch["status"] == "not_selected":
+            draft["support_status"] = "not_selected_preserved_for_reselection"
+            continue
         if proposal["status"] != "available_rule_composed":
             draft["support_status"] = "previous_text_not_supported_by_current_evidence"
+            continue
+        if (
+            not draft["employee_edited"]
+            and not draft["employee_text"]
+            and draft["source_proposal_revision"] is None
+        ):
+            draft.update(
+                {
+                    "employee_text": proposal["text"],
+                    "employee_edited": False,
+                    "source_evidence_ids": list(proposal["evidence_ids"]),
+                    "source_proposal_revision": proposal["revision"],
+                    "support_status": "matches_current_rule_proposal",
+                    "applied_from_response_revision": updated["revision"],
+                }
+            )
             continue
         current_ids = set(proposal["evidence_ids"])
         source_ids = set(draft["source_evidence_ids"])

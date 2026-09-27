@@ -329,8 +329,11 @@ def main() -> None:
             "id", "kind", "schema_version", "revision", "saved_at", "expires_at", "payload"
         }
         assert set(stored_record["payload"]) == {
-            "inquiry_type", "employee_input", "drafts", "edit_meta", "ui"
+            "inquiry_type", "inquiry_scope", "laptop_inquiry_goal", "employee_input", "drafts", "edit_meta", "ui"
         }
+        assert stored_record["schema_version"] == "employee-assistant.draft.v3"
+        assert stored_record["payload"]["inquiry_scope"] == "both"
+        assert stored_record["payload"]["laptop_inquiry_goal"] == "replacement_process"
         assert int(
             page.evaluate(
                 "([savedAt, expiresAt]) => Date.parse(expiresAt) - Date.parse(savedAt)",
@@ -372,6 +375,137 @@ def main() -> None:
         ).inner_text()
         page.locator("[data-copy-review-cancel]").click()
         page.screenshot(path=args.output / "restored-a.png", full_page=True)
+
+        # A valid v1 record remains byte-for-byte unchanged while it is inspected
+        # and explicitly restored. The old screen only offered the replacement
+        # process, so that goal is added in memory without reading intent from text.
+        # The first explicit save writes v3; a second tab holding v1 cannot overwrite it.
+        legacy_context = browser.new_context(viewport={"width": 1440, "height": 1000})
+        legacy_page = new_page(legacy_context, args.base_url)
+        legacy_record = deepcopy(stored_record)
+        legacy_record["schema_version"] = "employee-assistant.draft.v1"
+        legacy_record["revision"] = 31
+        legacy_record["payload"].pop("laptop_inquiry_goal")
+        legacy_record["payload"].pop("inquiry_scope")
+        legacy_record["payload"]["drafts"]["it"] = "v1에서 그대로 불러올 직원 글"
+        write_raw_record(legacy_page, legacy_record)
+        reload_without_beforeunload(legacy_page)
+        wait_ready(legacy_page)
+        assert read_raw_record(legacy_page) == legacy_record
+        legacy_page.locator("[data-restore-draft]").click()
+        legacy_page.locator("#restoreDraftDialog").wait_for()
+        assert "옛 화면은 교체 절차 문의만 제공" in legacy_page.locator(
+            "#restoreDraftSavedAt"
+        ).inner_text()
+        legacy_page.locator("[data-restore-confirm]").click()
+        legacy_page.locator("#draftStorageStatus", has_text="저장본을 불러왔습니다").wait_for()
+        legacy_page.locator('body[data-demo-state="normal"]').wait_for()
+        assert read_raw_record(legacy_page) == legacy_record
+        assert legacy_page.locator("#conversationItDraft").input_value() == "v1에서 그대로 불러올 직원 글"
+        assert legacy_page.locator(
+            '#conversationView [data-laptop-inquiry-goal][value="replacement_process"]'
+        ).is_checked()
+        assert legacy_page.locator(
+            '#conversationView [data-inquiry-scope][value="both"]'
+        ).is_checked()
+
+        legacy_other = new_page(legacy_context, args.base_url)
+        restore_saved(legacy_other)
+        legacy_page.locator("[data-save-draft]").click()
+        legacy_page.locator("#toast", has_text="24시간 임시 저장했습니다").wait_for()
+        upgraded_record = read_raw_record(legacy_page)
+        assert upgraded_record["schema_version"] == "employee-assistant.draft.v3"
+        assert upgraded_record["revision"] == 32
+        assert upgraded_record["payload"]["inquiry_scope"] == "both"
+        assert upgraded_record["payload"]["laptop_inquiry_goal"] == "replacement_process"
+        legacy_other.locator("#conversationItDraft").fill("다른 탭에서 보존할 v1 복원 글")
+        legacy_other.locator("[data-save-draft]").click()
+        legacy_other.locator("#draftStorageStatus", has_text="다른 탭").wait_for()
+        assert legacy_other.locator("#conversationItDraft").input_value() == "다른 탭에서 보존할 v1 복원 글"
+        assert read_raw_record(legacy_page) == upgraded_record
+        legacy_context.close()
+
+        # A v2 record already knows the laptop purpose but predates explicit
+        # scope. It is read byte-for-byte as both and only an explicit save
+        # upgrades it to v3.
+        v2_context = browser.new_context(viewport={"width": 1440, "height": 1000})
+        v2_page = new_page(v2_context, args.base_url)
+        v2_record = deepcopy(stored_record)
+        v2_record["schema_version"] = "employee-assistant.draft.v2"
+        v2_record["revision"] = 41
+        v2_record["payload"].pop("inquiry_scope")
+        v2_record["payload"]["drafts"]["monitor"] = "v2 모니터 글"
+        v2_record["payload"]["drafts"]["it"] = "v2 노트북 글"
+        write_raw_record(v2_page, v2_record)
+        reload_without_beforeunload(v2_page)
+        wait_ready(v2_page)
+        assert read_raw_record(v2_page) == v2_record
+        v2_page.locator("[data-restore-draft]").click()
+        v2_page.locator("#restoreDraftDialog").wait_for()
+        assert "두 문의를 함께 제공" in v2_page.locator(
+            "#restoreDraftSavedAt"
+        ).inner_text()
+        v2_page.locator("[data-restore-confirm]").click()
+        v2_page.locator("#draftStorageStatus", has_text="저장본을 불러왔습니다").wait_for()
+        v2_page.locator('body[data-demo-state="normal"]').wait_for()
+        assert read_raw_record(v2_page) == v2_record
+        assert v2_page.locator("#conversationMonitorDraft").input_value() == "v2 모니터 글"
+        assert v2_page.locator("#conversationItDraft").input_value() == "v2 노트북 글"
+        assert v2_page.locator(
+            '#conversationView [data-inquiry-scope][value="both"]'
+        ).is_checked()
+        v2_page.locator("[data-save-draft]").click()
+        v2_page.locator("#toast", has_text="24시간 임시 저장했습니다").wait_for()
+        upgraded_v2 = read_raw_record(v2_page)
+        assert upgraded_v2["schema_version"] == "employee-assistant.draft.v3"
+        assert upgraded_v2["revision"] == 42
+        assert upgraded_v2["payload"]["inquiry_scope"] == "both"
+        v2_context.close()
+
+        # A newly saved scope is explicit v3 state. Both edited drafts remain
+        # in the one snapshot even when only one branch is currently selected,
+        # and restore returns to an editor inside that selected scope.
+        scope_context = browser.new_context(viewport={"width": 1440, "height": 1000})
+        scope_page = new_page(scope_context, args.base_url)
+        open_it_draft(scope_page)
+        scope_page.locator("#conversationItDraft").fill("범위 밖에서도 보존할 노트북 글")
+        scope_page.locator('[data-draft-tab="monitor"]:visible').click()
+        scope_page.locator("#conversationMonitorDraft").fill("선택한 모니터 글")
+        with scope_page.expect_response("**/api/workspace"):
+            scope_page.locator(
+                '#conversationView [data-inquiry-scope][value="monitor"]'
+            ).check()
+        scope_page.locator("[data-save-draft]").click()
+        scope_page.locator("#toast", has_text="24시간 임시 저장했습니다").wait_for()
+        scoped_record = read_raw_record(scope_page)
+        assert scoped_record["schema_version"] == "employee-assistant.draft.v3"
+        assert scoped_record["payload"]["inquiry_scope"] == "monitor"
+        assert scoped_record["payload"]["drafts"] == {
+            "monitor": "선택한 모니터 글",
+            "it": "범위 밖에서도 보존할 노트북 글",
+        }
+        mismatched_active_record = deepcopy(scoped_record)
+        mismatched_active_record["payload"]["ui"]["active_draft"] = "it"
+        write_raw_record(scope_page, mismatched_active_record)
+        reload_without_beforeunload(scope_page)
+        wait_ready(scope_page)
+        restore_saved(scope_page)
+        assert scope_page.locator(
+            '#conversationView [data-inquiry-scope][value="monitor"]'
+        ).is_checked()
+        assert scope_page.locator("#conversationMonitorDraft").is_visible()
+        assert scope_page.locator("#conversationMonitorDraft").input_value() == "선택한 모니터 글"
+        assert scope_page.locator('[data-draft-tab="it"]:visible').count() == 0
+        assert scope_page.locator("#conversationItDraft").input_value() == "범위 밖에서도 보존할 노트북 글"
+        assert read_raw_record(scope_page) == mismatched_active_record
+        with scope_page.expect_response("**/api/workspace"):
+            scope_page.locator(
+                '#conversationView [data-inquiry-scope][value="both"]'
+            ).check()
+        scope_page.locator('[data-draft-tab="it"]:visible').click()
+        assert scope_page.locator("#conversationItDraft").input_value() == "범위 밖에서도 보존할 노트북 글"
+        scope_page.screenshot(path=args.output / "scope-restored.png", full_page=True)
+        scope_context.close()
 
         # Comparing or applying a current proposal changes only the in-memory
         # editing state. The explicitly saved record remains the same until the
@@ -657,7 +791,7 @@ def main() -> None:
         future_context = browser.new_context(viewport={"width": 1440, "height": 1000})
         future_page = new_page(future_context, args.base_url)
         future_record = deepcopy(stored_record)
-        future_record["schema_version"] = "employee-assistant.draft.v2"
+        future_record["schema_version"] = "employee-assistant.draft.v99"
         future_record["revision"] = 7
         future_record["payload"]["drafts"]["it"] = "미래 형식에 남겨 둔 직원 초안"
         write_raw_record(future_page, future_record)
@@ -835,20 +969,13 @@ def main() -> None:
         # Only a valid record in the current schema follows the 24-hour auto-delete rule.
         expired_context = browser.new_context()
         expired_page = new_page(expired_context, args.base_url)
-        expired_record = {
-            "id": "active-draft",
-            "kind": "snapshot",
-            "schema_version": "employee-assistant.draft.v1",
-            "revision": 1,
-            "saved_at": "2020-01-01T00:00:00.000Z",
-            "expires_at": "2020-01-02T00:00:00.000Z",
-            "payload": {
-                "inquiry_type": "monitor_and_laptop_replacement",
-                "employee_input": {"tenure": "4년", "symptom": "예시", "purchase": "not-purchased"},
-                "drafts": {"monitor": "만료 모니터", "it": "만료 IT"},
-                "edit_meta": {"monitor_touched": True, "it_touched": True},
-                "ui": {"mode": "conversation", "active_draft": "it"},
-            },
+        expired_record = deepcopy(stored_record)
+        expired_record["revision"] = 1
+        expired_record["saved_at"] = "2020-01-01T00:00:00.000Z"
+        expired_record["expires_at"] = "2020-01-02T00:00:00.000Z"
+        expired_record["payload"]["drafts"] = {
+            "monitor": "만료 모니터",
+            "it": "만료 IT",
         }
         write_raw_record(expired_page, expired_record)
         expired_page.reload(wait_until="networkidle")

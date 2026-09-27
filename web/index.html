@@ -402,6 +402,14 @@
       display: none !important;
     }
 
+    [data-laptop-scope-content][hidden],
+    [data-unselected-draft-note][hidden],
+    [data-open-answer-evidence][hidden],
+    [data-draft-tab][hidden],
+    [data-step][hidden] {
+      display: none !important;
+    }
+
     .workspace-heading {
       display: flex;
       align-items: flex-end;
@@ -694,6 +702,72 @@
       margin: 12px 0 0;
       color: var(--ink-soft);
       font-size: 0.74rem;
+    }
+
+    .condition-input-guide {
+      display: grid;
+      gap: 5px;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-left: 2px solid var(--line-strong);
+      color: var(--ink-soft);
+      font-size: 0.72rem;
+      line-height: 1.5;
+    }
+
+    .condition-input-guide p {
+      margin: 0;
+    }
+
+    .condition-input-guide strong {
+      color: var(--ink);
+    }
+
+    .inquiry-goal {
+      margin: 0 0 14px;
+      padding: 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      background: var(--surface-strong);
+    }
+
+    .inquiry-goal legend {
+      padding: 0 4px;
+      font-size: 0.76rem;
+      font-weight: 900;
+    }
+
+    .inquiry-goal-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .inquiry-goal-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.76rem;
+      line-height: 1.45;
+    }
+
+    .inquiry-goal-option:has(input:checked) {
+      border-color: var(--brand);
+      background: var(--brand-soft);
+    }
+
+    .inquiry-goal-option input {
+      margin-top: 2px;
+    }
+
+    .inquiry-goal-note {
+      margin: 8px 0 0;
+      color: var(--ink-soft);
+      font-size: 0.7rem;
     }
 
     .context-panel {
@@ -2488,6 +2562,23 @@
       background: var(--surface-soft);
     }
 
+    .copy-review-context {
+      margin: 12px 0 0;
+      padding: 10px 0 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .copy-review-context dt {
+      color: var(--ink-soft);
+      font-size: 0.74rem;
+      font-weight: 800;
+    }
+
+    .copy-review-context dd {
+      margin: 4px 0 0;
+      font-weight: 800;
+    }
+
     .copy-review-draft {
       max-height: 260px;
       margin: 10px 0 0;
@@ -2525,6 +2616,10 @@
 
       .copy-review-dialog {
         width: calc(100vw - 24px);
+      }
+
+      .inquiry-goal-options {
+        grid-template-columns: 1fr;
       }
 
       .copy-review-header,
@@ -2588,7 +2683,7 @@
         <div class="scenario-item" aria-current="page">
           <span class="scenario-icon" aria-hidden="true">장비</span>
           <span>
-            <strong>모니터·노트북 문의</strong>
+            <strong data-current-inquiry-label>모니터·노트북 문의</strong>
             <small>공개 정책을 이용한 대표 장면</small>
           </span>
         </div>
@@ -2619,14 +2714,33 @@
         <div class="conversation-layout">
           <section class="conversation-column" aria-label="질문과 답">
             <div class="thread-header">
-              <strong>장비 정책 / 현재 문의</strong>
+              <strong data-current-inquiry-context>장비 정책 / 모니터·노트북 문의</strong>
               <span>공개 정책 사례</span>
             </div>
             <div class="thread">
               <div class="message user">
                 <span class="message-label">내 질문</span>
-                <div class="message-bubble">재택용 모니터와 느려진 회사 노트북을 같이 바꾸고 싶은데, 같은 경비 신청으로 처리하면 돼?</div>
+                <div class="message-bubble" data-question-text>재택용 모니터를 구입하고, 지난주부터 화상회의 중 느려진 회사 노트북의 교체 절차를 문의하고 싶어요.</div>
               </div>
+
+              <fieldset class="inquiry-goal" aria-label="이번 문의 범위">
+                <legend>이번에 어떤 문의를 준비할까요?</legend>
+                <div class="inquiry-goal-options">
+                  <label class="inquiry-goal-option">
+                    <input type="radio" name="conversation-inquiry-scope" value="monitor" data-inquiry-scope>
+                    <span>모니터만</span>
+                  </label>
+                  <label class="inquiry-goal-option">
+                    <input type="radio" name="conversation-inquiry-scope" value="laptop" data-inquiry-scope>
+                    <span>노트북만</span>
+                  </label>
+                  <label class="inquiry-goal-option">
+                    <input type="radio" name="conversation-inquiry-scope" value="both" data-inquiry-scope checked>
+                    <span>모니터와 노트북 둘 다</span>
+                  </label>
+                </div>
+                <p class="inquiry-goal-note">기존 예시는 둘 다로 시작합니다. 필요한 문의를 직접 고르며 글의 내용에서 자동 판단하지 않습니다.</p>
+              </fieldset>
 
               <div class="state-only state-normal">
                 <div class="message assistant">
@@ -2638,7 +2752,7 @@
                     </div>
                     <div class="answer-block">
                       <h3><span class="signal unknown" aria-hidden="true">?</span> 아직 확인해야 하는 내용</h3>
-                      <p>두 요청을 한 화면에서 같이 신청할 수 있는지, 개인의 남은 수당과 실제 refresh 자격·승인 상태는 공개 정책만으로 알 수 없습니다.</p>
+                      <p data-answer-boundary>두 요청을 한 화면에서 같이 신청할 수 있는지, 개인의 남은 수당과 실제 refresh 자격·승인 상태는 공개 정책만으로 알 수 없습니다.</p>
                     </div>
                     <div class="inline-actions">
                       <button type="button" class="button ghost" data-open-answer-evidence="monitor">모니터 답의 참고 문서</button>
@@ -2649,7 +2763,7 @@
                   </div>
                 </div>
 
-                <section class="condition-card" aria-label="내 상황 추가하기">
+                <section class="condition-card" aria-label="내 상황 추가하기" data-laptop-scope-content>
                   <div class="condition-card-header">
                     <div>
                       <h2>내 상황을 추가하면 문의 글이 더 구체적으로 바뀝니다</h2>
@@ -2657,6 +2771,20 @@
                     </div>
                     <span class="completion-pill" data-condition-count>0/3 입력</span>
                   </div>
+                  <fieldset class="inquiry-goal" data-laptop-scope-content>
+                    <legend>노트북 문의 목적</legend>
+                    <div class="inquiry-goal-options">
+                      <label class="inquiry-goal-option">
+                        <input type="radio" name="conversation-laptop-goal" value="before_replacement" data-laptop-inquiry-goal>
+                        <span>교체를 정하기 전에 무엇을 확인할지 문의하기</span>
+                      </label>
+                      <label class="inquiry-goal-option">
+                        <input type="radio" name="conversation-laptop-goal" value="replacement_process" data-laptop-inquiry-goal checked>
+                        <span>교체 절차 문의하기</span>
+                      </label>
+                    </div>
+                    <p class="inquiry-goal-note">기존 교체 문의 예시로 시작합니다. 직원이 골랐다고 가정하지 않으며 실제 목적에 맞게 바꿀 수 있습니다.</p>
+                  </fieldset>
                   <div class="field-grid">
                     <label class="field">
                       <span>재직 기간</span>
@@ -2676,12 +2804,16 @@
                       </select>
                     </label>
                   </div>
+                  <div class="condition-input-guide" aria-live="polite">
+                    <p><strong>새 제안에 사용할 입력</strong> · <span data-stated-facts>아직 없음</span></p>
+                    <p><strong>아직 입력하지 않은 정보</strong> · <span data-missing-facts>재직 기간 · 느려진 시점·상황 · 구매 상태 — 문의 접수 필수 항목으로 확인된 것은 아닙니다.</span></p>
+                  </div>
                   <div class="card-actions">
                     <button type="button" class="button brand" data-fill-conditions>예시 정보 넣기</button>
                     <button type="button" class="button" data-apply-conditions>새 제안 만들기</button>
                     <button type="button" class="button ghost" data-clear-conditions>입력 내용 비우기</button>
                   </div>
-                  <p class="condition-footnote"><strong>문의 글</strong>에 필요한 내용을 모두 채워도 개인 자격과 구매 승인이 확인된 것은 아닙니다.</p>
+                  <p class="condition-footnote">세 정보를 모두 채워도 개인 자격과 구매 승인이 확인된 것은 아닙니다.</p>
                 </section>
               </div>
 
@@ -2697,7 +2829,7 @@
               <div class="state-only state-missing">
                 <div class="state-card warning" role="status">
                   <h2>노트북 교체에 관한 문서를 확인하지 못했습니다 <span class="muted">(미리보기)</span></h2>
-                  <p><span data-missing-monitor-answer>모니터 구매 경로는 확인했습니다.</span> 노트북에 필요한 핵심 표본이 빠져 있어 정책이 없다고 답하거나 새 IT 문의 글을 완성하지 않습니다.</p>
+                  <p data-missing-summary>모니터 답과 문의 글은 유지하지만, 노트북에 필요한 핵심 표본이 빠져 있어 새 IT 문의 글을 완성하지 않습니다.</p>
                   <div class="card-actions">
                     <button type="button" class="button" data-open-answer-evidence="monitor">모니터 답의 참고 문서</button>
                     <button type="button" class="button brand" data-retry>문서 다시 확인하기</button>
@@ -2733,7 +2865,7 @@
                   <article class="source-card">
                     <span class="eyebrow">공개 정책 · 모니터</span>
                     <h3>Equipment · Approved WFH Equipment List</h3>
-                    <p>모니터가 승인된 WFH 장비 목록에 있고 추가 모니터도 수당 대상이 될 수 있다고 설명합니다.</p>
+                    <p>모니터 승인 품목과 추가 모니터의 일반 수당 경로를 설명합니다. 기존 직원의 연간 refresh 조건과 개인 적용 여부는 구별해야 합니다.</p>
                     <div class="source-meta">
                       <span>2026-09-22 열람</span>
                       <a href="https://handbook.gitlab.com/handbook/finance/expenses/" target="_blank" rel="noreferrer">공개 문서 열기 ↗</a>
@@ -2762,7 +2894,7 @@
                   <article class="source-card">
                     <span class="eyebrow">확인한 문서 · 모니터</span>
                     <h3>Equipment · Approved WFH Equipment List</h3>
-                    <p>모니터의 WFH 장비 경로는 확인했습니다.</p>
+                    <p>모니터 승인 품목과 일반 수당 안내는 확인했습니다. 개인의 적용 경로·잔액·실제 처리는 별도 확인이 필요합니다.</p>
                     <div class="source-meta">
                       <span>공개 문서 사례</span>
                       <a href="https://handbook.gitlab.com/handbook/finance/expenses/" target="_blank" rel="noreferrer">공개 문서 열기 ↗</a>
@@ -2782,6 +2914,7 @@
                     <button type="button" role="tab" data-draft-tab="monitor" aria-selected="true">모니터 문의</button>
                     <button type="button" role="tab" data-draft-tab="it" aria-selected="false">IT 문의</button>
                   </div>
+                  <p class="draft-footnote" data-unselected-draft-note hidden></p>
                   <div class="draft-pane" data-draft-pane="monitor">
                     <div class="draft-label">
                       <label for="conversationMonitorDraft">경비 정책 문의 글</label>
@@ -2804,9 +2937,11 @@
                       <button type="button" class="button" data-apply-conditions>새 제안 만들기</button>
                       <button type="button" class="button" data-reset-draft="it">새 제안 비교하기</button>
                     </div>
-                    <ul class="origin-list" aria-label="문의 글에 포함된 정보">
-                      <li><strong>입력한 내용</strong><span data-stated-facts>재직 기간·느려진 상황·구매 상태를 아직 입력하지 않았습니다.</span></li>
-                      <li><strong>참고한 정책</strong><span>공개 정책의 3년 refresh 조건</span></li>
+                    <ul class="origin-list" aria-label="문의 글 주변에서 확인할 정보">
+                      <li><strong>현재 선택</strong><span data-inquiry-goal-label>교체 절차 문의</span></li>
+                      <li><strong>새 제안 입력</strong><span data-stated-facts>아직 없음</span></li>
+                      <li><strong>아직 미입력</strong><span data-missing-facts>재직 기간 · 느려진 시점·상황 · 구매 상태 — 문의 접수 필수 항목으로 확인된 것은 아닙니다.</span></li>
+                      <li><strong>참고할 정책</strong><span>공개 정책의 3년 refresh 조건 · 현재 글 반영 여부는 직접 확인</span></li>
                       <li><strong>아직 미확인</strong><span>실제 자격·승인·내부 처리 상태</span></li>
                     </ul>
                   </div>
@@ -2824,6 +2959,7 @@
                     <button type="button" role="tab" data-draft-tab="monitor" aria-selected="true">모니터 문의</button>
                     <button type="button" role="tab" data-draft-tab="it" aria-selected="false">IT 문의</button>
                   </div>
+                  <p class="draft-footnote" data-unselected-draft-note hidden></p>
                   <div class="draft-pane" data-draft-pane="monitor">
                     <div class="draft-label">
                       <label for="conversationMissingMonitorDraft">경비 정책 문의 글</label>
@@ -2879,7 +3015,7 @@
               <span class="step-number">04</span>
               <span><strong>질문 확인</strong><small>무엇을 원하는지</small></span>
             </button>
-            <button type="button" class="step-button" data-step="2">
+            <button type="button" class="step-button" data-step="2" data-laptop-scope-content>
               <span class="step-number">03</span>
               <span><strong>내 상황</strong><small>직접 입력한 내용</small></span>
             </button>
@@ -2896,26 +3032,58 @@
           <section class="step-stage">
             <div class="stage-header">
               <strong data-stage-title>01 · 문의 글 편집</strong>
-              <span>현재 장비 문의</span>
+              <span data-current-inquiry-context>현재 모니터·노트북 문의</span>
             </div>
 
             <article class="step-panel" data-step-panel="1">
               <h2>질문에서 필요한 일을 먼저 확인합니다</h2>
-              <p>모니터와 회사 노트북의 일반적인 처리 방법을 알아보고, 필요한 경우 담당자에게 보낼 문의 글을 준비하려는 질문입니다.</p>
+              <p data-scope-intro>모니터와 회사 노트북의 일반적인 처리 방법을 알아보고, 필요한 경우 담당자에게 보낼 문의 글을 준비하려는 질문입니다.</p>
+              <fieldset class="inquiry-goal" aria-label="이번 문의 범위">
+                <legend>이번에 어떤 문의를 준비할까요?</legend>
+                <div class="inquiry-goal-options">
+                  <label class="inquiry-goal-option">
+                    <input type="radio" name="workflow-inquiry-scope" value="monitor" data-inquiry-scope>
+                    <span>모니터만</span>
+                  </label>
+                  <label class="inquiry-goal-option">
+                    <input type="radio" name="workflow-inquiry-scope" value="laptop" data-inquiry-scope>
+                    <span>노트북만</span>
+                  </label>
+                  <label class="inquiry-goal-option">
+                    <input type="radio" name="workflow-inquiry-scope" value="both" data-inquiry-scope checked>
+                    <span>모니터와 노트북 둘 다</span>
+                  </label>
+                </div>
+                <p class="inquiry-goal-note">필요한 문의를 직접 고릅니다. 선택하지 않은 글은 지우지 않고 보관합니다.</p>
+              </fieldset>
               <div class="question-card">
                 <span class="eyebrow">입력한 질문</span>
-                <p>재택용 모니터와 느려진 회사 노트북을 같이 바꾸고 싶은데, 같은 경비 신청으로 처리하면 돼?</p>
+                <p data-question-text>재택용 모니터를 구입하고, 지난주부터 화상회의 중 느려진 회사 노트북의 교체 절차를 문의하고 싶어요.</p>
               </div>
               <div class="difference-card">
                 <h3>질문에 이미 들어 있는 내용</h3>
-                <p>모니터 구매와 느려진 회사 노트북 전체의 교체를 묻고 있습니다. 모니터 종류나 배터리에 관한 문의인지 다시 묻지 않습니다.</p>
+                <p data-scope-description>모니터 구매와 느려진 회사 노트북에 관한 문의입니다. 노트북 문의 목적은 아래에서 직접 고릅니다.</p>
               </div>
+              <fieldset class="inquiry-goal" data-laptop-scope-content>
+                <legend>노트북 문의 목적</legend>
+                <div class="inquiry-goal-options">
+                  <label class="inquiry-goal-option">
+                    <input type="radio" name="workflow-laptop-goal" value="before_replacement" data-laptop-inquiry-goal>
+                    <span>교체를 정하기 전에 무엇을 확인할지 문의하기</span>
+                  </label>
+                  <label class="inquiry-goal-option">
+                    <input type="radio" name="workflow-laptop-goal" value="replacement_process" data-laptop-inquiry-goal checked>
+                    <span>교체 절차 문의하기</span>
+                  </label>
+                </div>
+                <p class="inquiry-goal-note">기존 교체 문의 예시로 시작합니다. 자유문장에서 목적을 자동 판단한 결과가 아닙니다.</p>
+              </fieldset>
               <div class="step-actions">
-                <button type="button" class="button brand" data-go-step="2">내 상황 추가하기 →</button>
+                <button type="button" class="button brand" data-go-step="2" data-next-from-question>내 상황 추가하기 →</button>
               </div>
             </article>
 
-            <article class="step-panel" data-step-panel="2" hidden>
+            <article class="step-panel" data-step-panel="2" data-laptop-scope-content hidden>
               <h2>일반적인 안내를 먼저 보고, 필요할 때만 내 상황을 더합니다</h2>
               <p>아래 내용은 화면을 살펴보기 위한 예시 정보입니다. 문의 글을 준비하는 데 쓸 수 있지만, 개인 자격이나 승인이 확인된 것은 아닙니다.</p>
               <div class="condition-card">
@@ -2944,6 +3112,10 @@
                       <option value="unknown">확인 필요</option>
                     </select>
                   </label>
+                </div>
+                <div class="condition-input-guide" aria-live="polite">
+                  <p><strong>새 제안에 사용할 입력</strong> · <span data-stated-facts>아직 없음</span></p>
+                  <p><strong>아직 입력하지 않은 정보</strong> · <span data-missing-facts>재직 기간 · 느려진 시점·상황 · 구매 상태 — 문의 접수 필수 항목으로 확인된 것은 아닙니다.</span></p>
                 </div>
                 <div class="card-actions">
                   <button type="button" class="button brand" data-fill-conditions>예시 정보 넣기</button>
@@ -2981,7 +3153,7 @@
               <div class="state-only state-missing">
                 <div class="state-card warning">
                   <h2>모니터 구매에 관한 문서만 확인했습니다 <span class="muted">(미리보기)</span></h2>
-                  <p>노트북 교체에 관한 문서는 확인하지 못했습니다. 검색 오류인지 준비된 자료에 없는 것인지 알기 전에는 정책이 없다고 답하지 않습니다.</p>
+                  <p data-missing-summary>모니터 답과 문의 글은 유지하지만, 노트북에 필요한 핵심 표본이 빠져 있어 새 IT 문의 글을 완성하지 않습니다.</p>
                   <div class="card-actions">
                     <button type="button" class="button" data-open-answer-evidence="monitor">모니터 답의 참고 문서</button>
                     <button type="button" class="button brand" data-retry>문서 다시 확인하기</button>
@@ -2990,7 +3162,7 @@
                 </div>
               </div>
               <div class="step-actions">
-                <button type="button" class="button" data-go-step="2">← 내 상황</button>
+                <button type="button" class="button" data-go-step="2" data-back-from-answer>← 내 상황</button>
                 <button type="button" class="button brand" data-go-step="4">문의 글 보기 →</button>
               </div>
             </article>
@@ -3003,6 +3175,7 @@
                   <button type="button" role="tab" data-draft-tab="monitor" aria-selected="true">모니터 문의</button>
                   <button type="button" role="tab" data-draft-tab="it" aria-selected="false">IT 문의</button>
                 </div>
+                <p class="draft-footnote" data-unselected-draft-note hidden></p>
                 <div class="draft-pane" data-draft-pane="monitor">
                   <div class="draft-label">
                     <label for="workflowMonitorDraft">경비 정책 문의 글</label>
@@ -3025,9 +3198,11 @@
                     <button type="button" class="button" data-apply-conditions>새 제안 만들기</button>
                     <button type="button" class="button" data-reset-draft="it">새 제안 비교하기</button>
                   </div>
-                  <ul class="origin-list">
-                    <li><strong>입력한 내용</strong><span data-stated-facts>재직 기간·느려진 상황·구매 상태를 아직 입력하지 않았습니다.</span></li>
-                    <li><strong>참고한 정책</strong><span>공개 정책의 3년 refresh 조건</span></li>
+                  <ul class="origin-list" aria-label="문의 글 주변에서 확인할 정보">
+                    <li><strong>현재 선택</strong><span data-inquiry-goal-label>교체 절차 문의</span></li>
+                    <li><strong>새 제안 입력</strong><span data-stated-facts>아직 없음</span></li>
+                    <li><strong>아직 미입력</strong><span data-missing-facts>재직 기간 · 느려진 시점·상황 · 구매 상태 — 문의 접수 필수 항목으로 확인된 것은 아닙니다.</span></li>
+                    <li><strong>참고할 정책</strong><span>공개 정책의 3년 refresh 조건 · 현재 글 반영 여부는 직접 확인</span></li>
                     <li><strong>아직 미확인</strong><span>실제 자격·승인·내부 처리 상태</span></li>
                   </ul>
                 </div>
@@ -3044,6 +3219,7 @@
                   <button type="button" role="tab" data-draft-tab="monitor" aria-selected="true">모니터 문의</button>
                   <button type="button" role="tab" data-draft-tab="it" aria-selected="false">IT 문의</button>
                 </div>
+                <p class="draft-footnote" data-unselected-draft-note hidden></p>
                 <div class="draft-pane" data-draft-pane="monitor">
                   <div class="draft-label">
                     <label for="workflowMissingMonitorDraft">경비 정책 문의 글</label>
@@ -3089,15 +3265,19 @@
               <span>참고 문서</span>
               <strong data-summary-evidence>모니터·노트북 문서</strong>
             </div>
-            <div class="summary-row">
+            <div class="summary-row" data-laptop-scope-content data-laptop-summary>
               <span>입력한 내용</span>
               <strong data-condition-count>0/3 입력</strong>
             </div>
+            <div class="summary-row" data-laptop-scope-content data-laptop-summary>
+              <span>노트북 문의 목적</span>
+              <strong data-inquiry-goal-label>교체 절차 문의</strong>
+            </div>
             <div class="summary-row">
-              <span>개인 승인</span>
+              <span data-summary-personal-label>개인 적용·승인</span>
               <strong>미확인</strong>
             </div>
-            <p class="summary-note">내용을 모두 채워도 문의 글을 준비한 상태일 뿐입니다. 신청·발송·구매 승인을 대신하지 않습니다.</p>
+            <p class="summary-note" data-summary-note>세 정보를 모두 채워도 문의 글을 준비한 상태일 뿐입니다. 신청·발송·구매 승인을 대신하지 않습니다.</p>
             <div class="step-actions">
               <button type="button" class="button brand" data-go-step="4">문의 글로 이동</button>
             </div>
@@ -3151,6 +3331,10 @@
       <div class="copy-review-grid">
         <section class="copy-review-section" aria-labelledby="copyReviewFactsTitle">
           <h3 id="copyReviewFactsTitle">현재 입력한 내용</h3>
+          <dl class="copy-review-context">
+            <dt>현재 문의 범위·목적</dt>
+            <dd id="copyReviewGoal"></dd>
+          </dl>
           <p id="copyReviewFacts"></p>
         </section>
         <section class="copy-review-section" aria-labelledby="copyReviewDraftTitle">

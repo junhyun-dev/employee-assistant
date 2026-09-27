@@ -10,7 +10,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
-from .flow import load_corpus, process_request
+from .flow import (
+    DEFAULT_INQUIRY_SCOPE,
+    DEFAULT_LAPTOP_INQUIRY_GOAL,
+    INQUIRY_SCOPES,
+    LAPTOP_INQUIRY_GOALS,
+    load_corpus,
+    process_request,
+)
 
 
 HOST = "127.0.0.1"
@@ -57,7 +64,15 @@ def validate_payload(payload: Any) -> dict[str, Any]:
         raise RequestError(HTTPStatus.BAD_REQUEST, "invalid_json_shape", "JSON 객체를 보내 주세요.")
     _expect_keys(
         payload,
-        {"client_request_id", "inquiry_type", "user_text", "employee_facts", "exclude_laptop_evidence"},
+        {
+            "client_request_id",
+            "inquiry_type",
+            "inquiry_scope",
+            "laptop_inquiry_goal",
+            "user_text",
+            "employee_facts",
+            "exclude_laptop_evidence",
+        },
         "요청",
     )
 
@@ -72,7 +87,37 @@ def validate_payload(payload: Any) -> dict[str, Any]:
         raise RequestError(
             HTTPStatus.UNPROCESSABLE_ENTITY,
             "unsupported_inquiry_type",
-            "현재는 모니터 구입과 회사 노트북 전체 교체 문의만 지원합니다.",
+            "현재는 모니터 구입과 회사 노트북 문의만 지원합니다.",
+        )
+
+    inquiry_scope = payload.get("inquiry_scope", DEFAULT_INQUIRY_SCOPE)
+    if not isinstance(inquiry_scope, str):
+        raise RequestError(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_value",
+            "inquiry_scope은 문자열이어야 합니다.",
+        )
+    if inquiry_scope not in INQUIRY_SCOPES:
+        raise RequestError(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_value",
+            "inquiry_scope 값이 올바르지 않습니다.",
+        )
+
+    laptop_inquiry_goal = payload.get(
+        "laptop_inquiry_goal", DEFAULT_LAPTOP_INQUIRY_GOAL
+    )
+    if not isinstance(laptop_inquiry_goal, str):
+        raise RequestError(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_value",
+            "laptop_inquiry_goal은 문자열이어야 합니다.",
+        )
+    if laptop_inquiry_goal not in LAPTOP_INQUIRY_GOALS:
+        raise RequestError(
+            HTTPStatus.BAD_REQUEST,
+            "invalid_value",
+            "laptop_inquiry_goal 값이 올바르지 않습니다.",
         )
 
     user_text = _clean_text(payload.get("user_text", ""), "user_text", maximum=MAX_USER_TEXT, required=True)
@@ -85,12 +130,14 @@ def validate_payload(payload: Any) -> dict[str, Any]:
     for key in ("tenure", "symptom", "monitor_employee_detail"):
         if key in facts:
             cleaned_facts[key] = _clean_text(facts[key], key, maximum=MAX_FACT_TEXT)
-    purchase_status = facts.get("purchase_status", "")
-    if not isinstance(purchase_status, str):
-        raise RequestError(HTTPStatus.BAD_REQUEST, "invalid_value", "purchase_status는 문자열이어야 합니다.")
-    if purchase_status not in {"", "not_purchased", "purchased", "unknown"}:
+    purchase_status = _clean_text(
+        facts.get("purchase_status", ""),
+        "purchase_status",
+        maximum=MAX_FACT_TEXT,
+    )
+    if purchase_status.strip() and purchase_status not in {"not_purchased", "purchased", "unknown"}:
         raise RequestError(HTTPStatus.BAD_REQUEST, "invalid_value", "purchase_status 값이 올바르지 않습니다.")
-    if purchase_status:
+    if "purchase_status" in facts:
         cleaned_facts["purchase_status"] = purchase_status
 
     exclude_laptop = payload.get("exclude_laptop_evidence", False)
@@ -100,6 +147,8 @@ def validate_payload(payload: Any) -> dict[str, Any]:
     return {
         "client_request_id": request_id,
         "inquiry_type": inquiry_type,
+        "inquiry_scope": inquiry_scope,
+        "laptop_inquiry_goal": laptop_inquiry_goal,
         "user_text": user_text,
         "employee_facts": cleaned_facts,
         "exclude_laptop_evidence": exclude_laptop,
@@ -109,6 +158,8 @@ def validate_payload(payload: Any) -> dict[str, Any]:
 def build_api_response(payload: dict[str, Any]) -> dict[str, Any]:
     request = {
         "inquiry_type": payload["inquiry_type"],
+        "inquiry_scope": payload["inquiry_scope"],
+        "laptop_inquiry_goal": payload["laptop_inquiry_goal"],
         "user_text": payload["user_text"],
         "employee_facts": payload["employee_facts"],
     }

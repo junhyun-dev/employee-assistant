@@ -74,6 +74,19 @@ def main() -> None:
         page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=args.base_url)
         page.goto(args.base_url, wait_until="networkidle")
         page.locator('body[data-demo-state="normal"]').wait_for()
+        initial_answer = page.locator("#conversationView [data-answer-text]").inner_text()
+        for expected in (
+            "승인 WFH 장비 목록에 모니터와 모니터 스탠드",
+            "연간 500 USD(또는 현지 통화 상당액)",
+            "직전 한 해 전체 재직 조건",
+            "모든 모니터 구입 경로에 동일하게 적용되는지",
+            "개인의 적용 경로·잔액·실제 처리",
+        ):
+            assert expected in initial_answer
+        initial_monitor_draft = page.locator("#conversationMonitorDraft").input_value()
+        assert initial_monitor_draft.startswith("재택근무용 모니터 구입을 검토 중입니다.")
+        assert "[신규/기존 직원" not in initial_monitor_draft
+        assert "저는 이고" not in initial_monitor_draft
         page.screenshot(path=args.output / "a-normal.png", full_page=True)
         assert_evidence_actions(page, show_all=False, return_to_answer=False)
 
@@ -115,6 +128,672 @@ def main() -> None:
         assert "laptops-insurance-repairs" in answer_source_cards.first.inner_text().lower()
         page.screenshot(path=args.output / "answer-evidence-a.png", full_page=True)
         page.locator("[data-return-to-answer]").click()
+
+        # The employee chooses the laptop inquiry goal explicitly. Both goals
+        # retain the same policy answer, while the IT request text changes.
+        # Changing the goal creates a new proposal and never overwrites edits.
+        goal_context = browser.new_context(viewport={"width": 1440, "height": 1000})
+        goal_page = goal_context.new_page()
+        goal_page.goto(args.base_url, wait_until="networkidle")
+        goal_page.locator('body[data-demo-state="normal"]').wait_for()
+        replacement_radio = goal_page.locator(
+            '#conversationView [data-laptop-inquiry-goal][value="replacement_process"]'
+        )
+        before_radio = goal_page.locator(
+            '#conversationView [data-laptop-inquiry-goal][value="before_replacement"]'
+        )
+        assert replacement_radio.is_checked()
+        assert not before_radio.is_checked()
+        replacement_answer = goal_page.locator("[data-answer-text]").first.inner_text()
+        goal_page.locator('#conversationView [data-field="tenure"]').fill("2년 10개월")
+        goal_page.locator('#conversationView [data-field="symptom"]').fill(
+            "어제부터 문서 편집 중"
+        )
+        goal_page.locator('#conversationView [data-field="purchase"]').select_option(
+            "not-purchased"
+        )
+        goal_page.locator('#conversationView [data-apply-conditions]').first.click()
+        goal_page.locator('body[data-demo-state="normal"]').wait_for()
+        displayed_question = goal_page.locator(
+            '#conversationView [data-question-text]'
+        ).inner_text()
+        assert "느려진 회사 노트북" in displayed_question
+        assert "지난주부터" not in displayed_question
+        assert "어제부터" not in displayed_question
+        goal_page.locator('[data-open-panel="draft"]').first.click()
+        goal_page.locator('[data-draft-tab="it"]').first.click()
+        goal_it = goal_page.locator("#conversationItDraft")
+        goal_page.locator(
+            '#conversationItDraft ~ .card-actions [data-reset-draft="it"]'
+        ).click()
+        goal_page.locator("[data-proposal-review-confirm]").click()
+        replacement_draft = goal_it.input_value()
+        assert "3년 refresh 조건" in replacement_draft
+        edited_replacement = replacement_draft + "\n직원이 직접 남긴 일정 요청입니다."
+        goal_it.fill(edited_replacement)
+        monitor_before_goal_change = goal_page.locator(
+            "#conversationMonitorDraft"
+        ).input_value()
+
+        goal_page.locator(
+            '#conversationItDraft ~ .card-actions [data-reset-draft="it"]'
+        ).click()
+        goal_page.evaluate(
+            """
+            () => {
+              const field = document.querySelector('#conversationView [data-laptop-inquiry-goal][value="before_replacement"]');
+              field.checked = true;
+              field.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            """
+        )
+        goal_page.locator('body[data-demo-state="normal"]').wait_for()
+        assert goal_page.locator("[data-proposal-review-confirm]").is_disabled()
+        assert goal_it.input_value() == edited_replacement
+        goal_page.locator("[data-proposal-review-cancel]").click()
+        assert before_radio.is_checked()
+        assert goal_page.locator(
+            '#workflowView [data-laptop-inquiry-goal][value="before_replacement"]'
+        ).is_checked()
+        assert goal_page.locator("[data-answer-text]").first.inner_text() == replacement_answer
+        assert goal_page.locator("#conversationMonitorDraft").input_value() == monitor_before_goal_change
+
+        # Copy review shows the selected goal as its own snapshot value. A
+        # later goal change invalidates confirmation without rewriting either
+        # the displayed snapshot or the draft that would have been copied.
+        goal_page.locator(
+            '#conversationItDraft ~ .card-actions [data-copy-draft="it"]'
+        ).click()
+        goal_copy_dialog = goal_page.locator("#copyReviewDialog")
+        assert goal_copy_dialog.is_visible()
+        assert goal_page.locator("#copyReviewGoal").inner_text() == "모니터와 노트북 둘 다 · 교체를 정하기 전 확인 문의"
+        assert goal_page.locator("#copyReviewDraft").inner_text() == edited_replacement
+        with goal_page.expect_response("**/api/workspace"):
+            goal_page.evaluate(
+                """
+                () => {
+                  const field = document.querySelector('#conversationView [data-laptop-inquiry-goal][value="replacement_process"]');
+                  field.checked = true;
+                  field.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                """
+            )
+        assert goal_page.locator("[data-copy-review-confirm]").is_disabled()
+        assert goal_page.locator("#copyReviewGoal").inner_text() == "모니터와 노트북 둘 다 · 교체를 정하기 전 확인 문의"
+        assert goal_page.locator("#copyReviewDraft").inner_text() == edited_replacement
+        goal_page.locator("[data-copy-review-cancel]").click()
+        with goal_page.expect_response("**/api/workspace"):
+            before_radio.check()
+        assert goal_it.input_value() == edited_replacement
+
+        goal_page.locator(
+            '#conversationItDraft ~ .card-actions [data-reset-draft="it"]'
+        ).click()
+        before_proposal = goal_page.locator("#proposalReviewProposed").text_content()
+        assert "교체 여부를 정하기 전에" in before_proposal
+        assert "어떤 정보를 더 드려야 하는지" in before_proposal
+        assert "새 기기를 구매하지 않았습니다" in before_proposal
+        assert goal_it.input_value() == edited_replacement
+        goal_page.screenshot(path=args.output / "inquiry-goal-a-review.png", full_page=True)
+        goal_page.locator("[data-proposal-review-confirm]").click()
+        assert goal_it.input_value() == before_proposal
+        assert "3년 refresh 조건" not in goal_it.input_value()
+        conversation_context = goal_page.locator(
+            '#conversationView .origin-list[aria-label="문의 글 주변에서 확인할 정보"]'
+        )
+        assert conversation_context.is_visible()
+        assert "현재 선택" in conversation_context.inner_text()
+        assert "교체를 정하기 전 확인 문의" in conversation_context.inner_text()
+        assert "현재 글 반영 여부는 직접 확인" in conversation_context.inner_text()
+
+        goal_page.locator('[data-mode="workflow"]').click()
+        goal_page.locator('#workflowView [data-step="1"]').click()
+        assert goal_page.locator(
+            '#workflowView [data-laptop-inquiry-goal][value="before_replacement"]'
+        ).is_checked()
+        assert "교체를 정하기 전에" in goal_page.locator(
+            '#workflowView [data-question-text]'
+        ).inner_text()
+        assert "현재 글 반영 여부는 직접 확인" in goal_page.locator(
+            '#workflowView .origin-list[aria-label="문의 글 주변에서 확인할 정보"]'
+        ).inner_text()
+        goal_page.screenshot(path=args.output / "inquiry-goal-b.png", full_page=True)
+
+        goal_page.locator('[data-demo-state-button="missing"]').click()
+        goal_page.locator('body[data-demo-state="missing"]').wait_for()
+        assert goal_page.locator("#workflowMissingMonitorDraft").input_value() == monitor_before_goal_change
+        assert goal_page.locator(
+            '#workflowView [data-reset-draft="it"]:visible'
+        ).count() == 0
+        assert goal_page.locator(
+            '#workflowView [data-laptop-inquiry-goal][value="before_replacement"]'
+        ).is_checked()
+        goal_page.locator('[data-demo-state-button="normal"]').click()
+        goal_page.locator('body[data-demo-state="normal"]').wait_for()
+
+        def delay_goal_response(route):
+            response = route.fetch()
+            time.sleep(0.45)
+            route.fulfill(response=response)
+
+        goal_page.route("**/api/workspace", delay_goal_response, times=1)
+        workflow_replacement_radio = goal_page.locator(
+            '#workflowView [data-laptop-inquiry-goal][value="replacement_process"]'
+        )
+        workflow_before_radio = goal_page.locator(
+            '#workflowView [data-laptop-inquiry-goal][value="before_replacement"]'
+        )
+        workflow_replacement_radio.check()
+        workflow_before_radio.check()
+        goal_page.locator('body[data-demo-state="normal"]').wait_for()
+        goal_page.wait_for_timeout(550)
+        assert before_radio.is_checked()
+        goal_page.locator('[data-mode="conversation"]').click()
+        goal_page.locator('[data-panel-tab="draft"]').click()
+        goal_page.locator('[data-draft-tab="it"]').first.click()
+        goal_page.locator(
+            '#conversationItDraft ~ .card-actions [data-reset-draft="it"]'
+        ).click()
+        final_goal_proposal = goal_page.locator("#proposalReviewProposed").text_content()
+        assert "교체 여부를 정하기 전에" in final_goal_proposal
+        assert "3년 refresh 조건" not in final_goal_proposal
+        goal_page.locator("[data-proposal-review-cancel]").click()
+        goal_page.unroute("**/api/workspace")
+
+        goal_page.set_viewport_size({"width": 390, "height": 844})
+        goal_page.locator("#conversationView .inquiry-goal").first.scroll_into_view_if_needed()
+        overflow = goal_page.evaluate(
+            "document.documentElement.scrollWidth - document.documentElement.clientWidth"
+        )
+        assert overflow <= 0, overflow
+        assert before_radio.is_visible()
+        goal_page.screenshot(path=args.output / "inquiry-goal-mobile.png", full_page=True)
+        goal_context.close()
+
+        # The employee explicitly selects which of the two existing inquiry
+        # branches to prepare. Unselected work is neither searched nor shown as
+        # missing, while both employee-edited drafts stay in memory for reselection.
+        scope_context = browser.new_context(
+            viewport={"width": 1440, "height": 1000},
+            permissions=["clipboard-read", "clipboard-write"],
+        )
+        scope_page = scope_context.new_page()
+        scope_page.goto(args.base_url, wait_until="networkidle")
+        scope_page.locator('body[data-demo-state="normal"]').wait_for()
+        assert scope_page.locator(
+            '#conversationView [data-inquiry-scope][value="both"]'
+        ).is_checked()
+        scope_page.locator('[data-open-panel="draft"]').first.click()
+        scope_page.locator('[data-draft-tab="it"]:visible').click()
+        scope_it = scope_page.locator("#conversationItDraft")
+        scope_it.fill(scope_it.input_value() + "\n선택을 바꿔도 보존할 노트북 문장")
+        scope_page.locator('[data-draft-tab="monitor"]:visible').click()
+        scope_monitor = scope_page.locator("#conversationMonitorDraft")
+        scope_monitor.fill(scope_monitor.input_value() + "\n선택을 바꿔도 보존할 모니터 문장")
+        edited_scope_it = scope_it.input_value()
+        edited_scope_monitor = scope_monitor.input_value()
+
+        scope_page.locator('[data-draft-tab="it"]:visible').click()
+        scope_page.locator('#conversationView [data-field="tenure"]').fill("2년 10개월")
+        scope_page.evaluate("navigator.clipboard.writeText('before-scope-copy')")
+        scope_page.locator('[data-copy-draft="it"]:visible').click()
+        assert scope_page.locator("#copyReviewDialog").is_visible()
+        with scope_page.expect_response("**/api/workspace"):
+            scope_page.evaluate(
+                """
+                () => {
+                  const field = document.querySelector('#conversationView [data-inquiry-scope][value="monitor"]');
+                  field.checked = true;
+                  field.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                """
+            )
+        assert scope_page.locator("[data-copy-review-confirm]").is_disabled()
+        assert "입력·문의 글·검색 상태가 바뀌었습니다" in scope_page.locator(
+            "#copyReviewStatus"
+        ).inner_text()
+        assert scope_page.locator("#copyReviewGoal").inner_text().startswith(
+            "모니터와 노트북 둘 다"
+        )
+        assert scope_page.locator("#copyReviewDraft").inner_text() == edited_scope_it
+        scope_page.evaluate(
+            """
+            () => {
+              const confirm = document.querySelector('[data-copy-review-confirm]');
+              confirm.disabled = false;
+              confirm.click();
+            }
+            """
+        )
+        assert scope_page.locator("#copyReviewDialog").is_visible()
+        assert scope_page.evaluate("navigator.clipboard.readText()") == "before-scope-copy"
+        scope_page.locator("[data-copy-review-cancel]").click()
+
+        assert scope_page.locator('[data-draft-tab="it"]:visible').count() == 0
+        assert scope_page.locator('[data-draft-tab="monitor"]:visible').count() == 1
+        assert scope_monitor.is_visible()
+        assert scope_monitor.input_value() == edited_scope_monitor
+        assert scope_page.locator("[data-current-inquiry-label]").inner_text() == "모니터 문의"
+        assert scope_page.locator(
+            '#conversationView [data-current-inquiry-context]'
+        ).inner_text() == "장비 정책 / 모니터 문의"
+        assert scope_page.locator(
+            '#conversationView [data-open-answer-evidence="laptop"]:visible'
+        ).count() == 0
+        assert scope_page.locator(
+            '#conversationView [data-laptop-inquiry-goal]:visible'
+        ).count() == 0
+        assert "IT 문의 글은 보관 중" in scope_page.locator(
+            '#conversationView [data-unselected-draft-note]:visible'
+        ).inner_text()
+
+        # Monitor-only hides laptop input/goal summaries in both layouts. The
+        # monitor copy review also does not present laptop facts as inputs used
+        # to compose the monitor draft.
+        scope_page.locator('[data-copy-draft="monitor"]:visible').click()
+        assert scope_page.locator("#copyReviewDialog").is_visible()
+        assert scope_page.locator("#copyReviewGoal").inner_text() == "모니터만"
+        assert scope_page.locator("#copyReviewFactsTitle").inner_text() == "모니터 새 제안 안내"
+        monitor_copy_facts = scope_page.locator("#copyReviewFacts").inner_text()
+        assert "노트북용 입력을 자동 반영하지 않습니다" in monitor_copy_facts
+        assert "직접 수정한 내용은 복사할 글에서 확인" in monitor_copy_facts
+        assert "2년 10개월" not in monitor_copy_facts
+        assert scope_page.evaluate("navigator.clipboard.readText()") == "before-scope-copy"
+        scope_page.locator("[data-copy-review-cancel]").click()
+
+        scope_page.locator('[data-mode="workflow"]').click()
+        laptop_summary_rows = scope_page.locator("#workflowView [data-laptop-summary]")
+        assert laptop_summary_rows.count() == 2
+        for index in range(laptop_summary_rows.count()):
+            row = laptop_summary_rows.nth(index)
+            assert row.is_hidden()
+            assert row.evaluate("node => getComputedStyle(node).display") == "none"
+            assert row.bounding_box() is None
+        assert scope_page.locator("#workflowView [data-summary-personal-label]").inner_text() == (
+            "개인 적용·처리"
+        )
+        monitor_summary_note = scope_page.locator(
+            "#workflowView [data-summary-note]"
+        ).inner_text()
+        assert "남은 수당" in monitor_summary_note
+        assert "세 정보를 모두" not in monitor_summary_note
+        scope_page.locator('[data-mode="conversation"]').click()
+        scope_page.screenshot(
+            path=args.output / "inquiry-scope-monitor-a.png", full_page=True
+        )
+
+        # Excluding laptop evidence does not turn monitor-only into a missing
+        # state because the laptop branch is explicitly not selected.
+        with scope_page.expect_response("**/api/workspace"):
+            scope_page.locator('[data-demo-state-button="missing"]').click()
+        scope_page.locator('body[data-demo-state="normal"]').wait_for()
+        assert scope_page.locator(
+            '#conversationView [data-reset-draft="monitor"]:visible'
+        ).is_enabled()
+        assert scope_page.locator(
+            '#conversationView [data-reset-draft="it"]:visible'
+        ).count() == 0
+        with scope_page.expect_response("**/api/workspace"):
+            scope_page.locator('[data-demo-state-button="normal"]').click()
+        scope_page.locator('body[data-demo-state="normal"]').wait_for()
+
+        # A slower response for an older scope cannot replace the later scope.
+        def delay_scope_response(route):
+            response = route.fetch()
+            time.sleep(0.45)
+            route.fulfill(response=response)
+
+        scope_page.route("**/api/workspace", delay_scope_response, times=1)
+        scope_page.locator(
+            '#conversationView [data-inquiry-scope][value="laptop"]'
+        ).check()
+        scope_page.locator(
+            '#conversationView [data-inquiry-scope][value="both"]'
+        ).check()
+        scope_page.locator('body[data-demo-state="normal"]').wait_for()
+        scope_page.wait_for_timeout(550)
+        assert scope_page.locator(
+            '#conversationView [data-inquiry-scope][value="both"]'
+        ).is_checked()
+        assert scope_page.locator('[data-draft-tab="it"]:visible').count() == 1
+        assert scope_page.locator('[data-draft-tab="monitor"]:visible').count() == 1
+        assert scope_it.input_value() == edited_scope_it
+        assert scope_monitor.input_value() == edited_scope_monitor
+        scope_page.unroute("**/api/workspace")
+
+        scope_page.locator('[data-draft-tab="it"]:visible').click()
+        scope_page.locator('[data-reset-draft="it"]:visible').click()
+        assert scope_page.locator("#proposalReviewDialog").is_visible()
+        with scope_page.expect_response("**/api/workspace"):
+            scope_page.evaluate(
+                """
+                () => {
+                  const field = document.querySelector('#conversationView [data-inquiry-scope][value="monitor"]');
+                  field.checked = true;
+                  field.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                """
+            )
+        assert scope_page.locator("[data-proposal-review-confirm]").is_disabled()
+        scope_page.evaluate(
+            """
+            () => {
+              const confirm = document.querySelector('[data-proposal-review-confirm]');
+              confirm.disabled = false;
+              confirm.click();
+            }
+            """
+        )
+        assert scope_page.locator("#proposalReviewDialog").is_visible()
+        assert scope_it.input_value() == edited_scope_it
+        scope_page.locator("[data-proposal-review-cancel]").click()
+        with scope_page.expect_response("**/api/workspace"):
+            scope_page.locator(
+                '#conversationView [data-inquiry-scope][value="both"]'
+            ).check()
+
+        # Laptop-only searches and displays only that selected branch. The
+        # monitor draft remains stored and returns unchanged when both is chosen.
+        scope_page.locator('[data-mode="workflow"]').click()
+        scope_page.locator('#workflowView [data-step="1"]:visible').click()
+        with scope_page.expect_response("**/api/workspace"):
+            scope_page.locator(
+                '#workflowView [data-inquiry-scope][value="laptop"]'
+            ).check()
+        assert scope_page.locator('#workflowView [data-step="2"]:visible').count() == 1
+        assert scope_page.locator("[data-current-inquiry-label]").inner_text() == "노트북 문의"
+        assert scope_page.locator("#workflowView [data-scope-intro]").inner_text().startswith(
+            "느려진 회사 노트북"
+        )
+        assert scope_page.locator(
+            '#workflowView [data-open-answer-evidence="monitor"]:visible'
+        ).count() == 0
+        scope_page.locator('#workflowView [data-step="3"]:visible').click()
+        scope_page.locator(
+            '#workflowView [data-open-answer-evidence="laptop"]:visible'
+        ).click()
+        scope_sources = scope_page.locator(
+            '.panel-content[data-panel-content="evidence"] .state-only:visible .source-card'
+        )
+        assert scope_sources.count() == 1
+        assert "laptops-insurance-repairs" in scope_sources.first.inner_text().lower()
+        scope_page.locator("[data-return-to-answer]").click()
+        scope_page.locator('#workflowView [data-step="4"]:visible').click()
+        assert scope_page.locator('#workflowView [data-draft-tab="monitor"]:visible').count() == 0
+        assert scope_page.locator('#workflowItDraft').is_visible()
+        assert scope_page.locator('#workflowItDraft').input_value() == edited_scope_it
+        scope_page.screenshot(
+            path=args.output / "inquiry-scope-laptop-b.png", full_page=True
+        )
+
+        scope_page.set_viewport_size({"width": 390, "height": 844})
+        scope_page.locator('#workflowView [data-step="1"]:visible').click()
+        scope_page.locator('#workflowView [data-inquiry-scope][value="laptop"]').scroll_into_view_if_needed()
+        assert scope_page.evaluate(
+            "document.documentElement.scrollWidth - document.documentElement.clientWidth"
+        ) <= 0
+        scope_page.screenshot(path=args.output / "inquiry-scope-laptop-mobile.png", full_page=True)
+        scope_context.close()
+
+        # Missing facts do not become bracket placeholders or invented facts.
+        # Explicit unknown remains a distinct employee statement, while rule
+        # proposals never overwrite the employee's current edit automatically.
+        minimal_context = browser.new_context(
+            viewport={"width": 1440, "height": 1000},
+            permissions=["clipboard-read", "clipboard-write"],
+        )
+        minimal_page = minimal_context.new_page()
+        minimal_page.goto(args.base_url, wait_until="networkidle")
+        minimal_page.locator('body[data-demo-state="normal"]').wait_for()
+        with minimal_page.expect_response("**/api/workspace"):
+            minimal_page.locator(
+                '#conversationView [data-laptop-inquiry-goal][value="before_replacement"]'
+            ).check()
+        minimal_page.locator('#conversationView [data-field="symptom"]').fill(
+            "오늘 화상회의 중"
+        )
+        with minimal_page.expect_response("**/api/workspace"):
+            minimal_page.locator(
+                '#conversationView [data-apply-conditions]'
+            ).first.click()
+        minimal_page.locator('[data-open-panel="draft"]').first.click()
+        minimal_page.locator('[data-draft-tab="it"]').first.click()
+        minimal_it = minimal_page.locator("#conversationItDraft")
+        minimal_compare = minimal_page.locator(
+            '#conversationItDraft ~ .card-actions [data-reset-draft="it"]'
+        )
+        minimal_compare.click()
+        symptom_only_proposal = minimal_page.locator(
+            "#proposalReviewProposed"
+        ).text_content()
+        assert symptom_only_proposal == (
+            "회사 노트북이 오늘 화상회의 중 느려졌습니다. 교체 여부를 정하기 전에, "
+            "증상을 확인하려면 어떤 정보를 더 드려야 하는지와 다음 문의 절차를 안내 "
+            "부탁드립니다."
+        )
+        assert "[" not in symptom_only_proposal
+        assert "구매" not in symptom_only_proposal
+        minimal_page.locator("[data-proposal-review-confirm]").click()
+        input_guide = minimal_page.locator(
+            "#conversationView .condition-input-guide"
+        )
+        assert "오늘 화상회의 중 느려짐" in input_guide.inner_text()
+        assert "재직 기간 · 구매 상태" in input_guide.inner_text()
+        assert "필수 항목으로 확인된 것은 아닙니다" in input_guide.inner_text()
+        assert minimal_page.locator(
+            "#conversationView [data-condition-count]"
+        ).inner_text() == "1/3 입력"
+        minimal_page.screenshot(
+            path=args.output / "minimal-symptom-only.png", full_page=True
+        )
+
+        purchase_field = minimal_page.locator(
+            '#conversationView [data-field="purchase"]'
+        )
+        purchase_field.select_option("unknown")
+        with minimal_page.expect_response("**/api/workspace"):
+            minimal_page.locator(
+                '#conversationView [data-apply-conditions]'
+            ).first.click()
+        minimal_compare.click()
+        unknown_proposal = minimal_page.locator(
+            "#proposalReviewProposed"
+        ).text_content()
+        assert minimal_it.input_value() == symptom_only_proposal
+        assert "새 기기 구매 여부는 아직 확인하지 못했습니다." in unknown_proposal
+        assert "구매 상태" not in minimal_page.locator(
+            "#conversationView .condition-input-guide [data-missing-facts]"
+        ).inner_text()
+        assert minimal_page.locator(
+            "#conversationView [data-condition-count]"
+        ).inner_text() == "2/3 입력"
+        minimal_page.locator("[data-proposal-review-confirm]").click()
+
+        purchase_field.select_option("not-purchased")
+        with minimal_page.expect_response("**/api/workspace"):
+            minimal_page.locator(
+                '#conversationView [data-apply-conditions]'
+            ).first.click()
+        minimal_compare.click()
+        minimal_page.locator("[data-proposal-review-confirm]").click()
+        known_text = minimal_it.input_value()
+        assert "새 기기를 구매하지 않았습니다." in known_text
+        edited_known_text = known_text + "\n직원이 직접 덧붙인 확인 요청입니다."
+        minimal_it.fill(edited_known_text)
+
+        purchase_field.select_option("unknown")
+        with minimal_page.expect_response("**/api/workspace"):
+            minimal_page.locator(
+                '#conversationView [data-apply-conditions]'
+            ).first.click()
+        minimal_compare.click()
+        assert minimal_page.locator("#proposalReviewCurrent").text_content() == edited_known_text
+        assert "아직 확인하지 못했습니다" in minimal_page.locator(
+            "#proposalReviewProposed"
+        ).text_content()
+        minimal_page.locator("[data-proposal-review-cancel]").click()
+        assert minimal_it.input_value() == edited_known_text
+
+        purchase_field.select_option("")
+        minimal_page.locator('#conversationView [data-field="tenure"]').fill("   ")
+        minimal_page.locator('#conversationView [data-field="symptom"]').fill(" \t ")
+        with minimal_page.expect_response("**/api/workspace"):
+            minimal_page.locator(
+                '#conversationView [data-apply-conditions]'
+            ).first.click()
+        minimal_compare.click()
+        blank_before_proposal = minimal_page.locator(
+            "#proposalReviewProposed"
+        ).text_content()
+        assert minimal_it.input_value() == edited_known_text
+        assert blank_before_proposal.startswith("회사 노트북이 느려져 문의드립니다.")
+        assert "[" not in blank_before_proposal
+        assert "구매" not in blank_before_proposal
+        minimal_page.locator("[data-proposal-review-confirm]").click()
+        assert minimal_page.locator(
+            "#conversationView [data-condition-count]"
+        ).inner_text() == "0/3 입력"
+        assert minimal_page.locator(
+            "#conversationView .condition-input-guide [data-stated-facts]"
+        ).inner_text() == "아직 없음"
+        assert all(
+            label in minimal_page.locator(
+                "#conversationView .condition-input-guide [data-missing-facts]"
+            ).inner_text()
+            for label in ("재직 기간", "느려진 시점·상황", "구매 상태")
+        )
+
+        with minimal_page.expect_response("**/api/workspace"):
+            minimal_page.locator(
+                '#conversationView [data-laptop-inquiry-goal][value="replacement_process"]'
+            ).check()
+        minimal_compare.click()
+        blank_replacement_proposal = minimal_page.locator(
+            "#proposalReviewProposed"
+        ).text_content()
+        assert blank_replacement_proposal.startswith("회사 노트북이 느려져 문의드립니다.")
+        assert "3년 refresh 조건" in blank_replacement_proposal
+        assert "[" not in blank_replacement_proposal
+        minimal_page.locator("[data-proposal-review-confirm]").click()
+        assert minimal_it.input_value() == blank_replacement_proposal
+        minimal_page.locator(
+            '#conversationItDraft ~ .card-actions [data-copy-draft="it"]'
+        ).click()
+        assert minimal_page.evaluate("navigator.clipboard.readText()") == blank_replacement_proposal
+
+        monitor_before_minimal_missing = minimal_page.locator(
+            "#conversationMonitorDraft"
+        ).input_value()
+        minimal_page.locator('[data-demo-state-button="missing"]').click()
+        minimal_page.locator('body[data-demo-state="missing"]').wait_for()
+        assert minimal_page.locator(
+            "#conversationMissingMonitorDraft"
+        ).input_value() == monitor_before_minimal_missing
+        assert minimal_page.locator(
+            '#conversationView [data-reset-draft="it"]:visible'
+        ).count() == 0
+        minimal_page.locator('[data-demo-state-button="normal"]').click()
+        minimal_page.locator('body[data-demo-state="normal"]').wait_for()
+
+        minimal_page.locator('[data-mode="workflow"]').click()
+        minimal_page.locator('#workflowView [data-step="2"]').click()
+        workflow_guide = minimal_page.locator(
+            "#workflowView .condition-input-guide"
+        )
+        assert workflow_guide.is_visible()
+        assert "아직 없음" in workflow_guide.inner_text()
+        assert "필수 항목으로 확인된 것은 아닙니다" in workflow_guide.inner_text()
+        minimal_page.screenshot(
+            path=args.output / "minimal-blank-workflow.png", full_page=True
+        )
+        minimal_page.set_viewport_size({"width": 390, "height": 844})
+        workflow_guide.scroll_into_view_if_needed()
+        assert minimal_page.evaluate(
+            "document.documentElement.scrollWidth - document.documentElement.clientWidth"
+        ) <= 0
+        minimal_page.screenshot(
+            path=args.output / "minimal-blank-mobile.png", full_page=True
+        )
+        minimal_context.close()
+
+        # Monitor policy facts and the employee's personal eligibility stay
+        # separate. Laptop-only facts do not enter the monitor draft, while
+        # direct edits remain until the employee explicitly adopts a proposal.
+        monitor_context = browser.new_context(
+            viewport={"width": 1440, "height": 1000},
+            permissions=["clipboard-read", "clipboard-write"],
+        )
+        monitor_page = monitor_context.new_page()
+        monitor_page.goto(args.base_url, wait_until="networkidle")
+        monitor_page.locator('body[data-demo-state="normal"]').wait_for()
+        monitor_default = monitor_page.locator("#conversationMonitorDraft").input_value()
+        assert monitor_default == monitor_page.locator("#workflowMonitorDraft").input_value()
+        assert monitor_default.startswith("재택근무용 모니터 구입을 검토 중입니다.")
+        assert "Stipend/Allowance" in monitor_default
+        assert "[" not in monitor_default
+        assert "직원 정보:" not in monitor_default
+
+        monitor_page.locator('[data-panel-tab="draft"]').click()
+        monitor_area = monitor_page.locator("#conversationMonitorDraft")
+        edited_monitor = monitor_default + "\n직원이 직접 추가한 모니터 사용 목적입니다."
+        monitor_area.fill(edited_monitor)
+        monitor_page.locator('#conversationView [data-field="tenure"]').fill("2년 10개월")
+        monitor_page.locator('#conversationView [data-field="purchase"]').select_option("purchased")
+        with monitor_page.expect_response("**/api/workspace"):
+            monitor_page.locator(
+                '#conversationView [data-apply-conditions]'
+            ).first.click()
+        assert monitor_area.input_value() == edited_monitor
+        monitor_page.locator(
+            '#conversationMonitorDraft ~ .card-actions [data-reset-draft="monitor"]'
+        ).click()
+        assert monitor_page.locator("#proposalReviewCurrent").text_content() == edited_monitor
+        proposed_monitor = monitor_page.locator("#proposalReviewProposed").text_content()
+        assert proposed_monitor == monitor_default
+        assert "2년 10개월" not in proposed_monitor
+        assert "이미 구매" not in proposed_monitor
+        monitor_page.locator("[data-proposal-review-cancel]").click()
+        assert monitor_area.input_value() == edited_monitor
+
+        monitor_page.locator(
+            '#conversationMonitorDraft ~ .card-actions [data-reset-draft="monitor"]'
+        ).click()
+        monitor_page.locator("[data-proposal-review-confirm]").click()
+        assert monitor_area.input_value() == monitor_default
+        monitor_area.fill(edited_monitor)
+        monitor_page.locator('[data-mode="workflow"]').click()
+        monitor_page.locator('#workflowView [data-step="4"]').click()
+        assert monitor_page.locator("#workflowMonitorDraft").input_value() == edited_monitor
+        monitor_page.screenshot(
+            path=args.output / "monitor-minimal-workflow.png", full_page=True
+        )
+
+        monitor_page.locator('[data-demo-state-button="missing"]').click()
+        monitor_page.locator('body[data-demo-state="missing"]').wait_for()
+        missing_monitor = monitor_page.locator("#workflowMissingMonitorDraft")
+        assert missing_monitor.is_visible()
+        assert missing_monitor.input_value() == edited_monitor
+        assert "직전 한 해 전체 재직 조건" in monitor_page.locator(
+            "[data-missing-monitor-answer]"
+        ).first.inner_text()
+        assert monitor_page.locator(
+            '#workflowView [data-reset-draft="it"]:visible'
+        ).count() == 0
+        monitor_page.evaluate("navigator.clipboard.writeText('before-monitor-copy')")
+        monitor_page.locator(
+            '#workflowView [data-copy-draft="monitor"]:visible'
+        ).click()
+        assert monitor_page.evaluate("navigator.clipboard.readText()") == edited_monitor
+
+        monitor_page.set_viewport_size({"width": 390, "height": 844})
+        missing_monitor.scroll_into_view_if_needed()
+        assert monitor_page.evaluate(
+            "document.documentElement.scrollWidth - document.documentElement.clientWidth"
+        ) <= 0
+        monitor_page.screenshot(
+            path=args.output / "monitor-minimal-missing-mobile.png", full_page=True
+        )
+        monitor_context.close()
 
         page.locator('[data-open-panel="draft"]').first.click()
         page.locator('[data-draft-tab="it"]').first.click()
@@ -274,7 +953,9 @@ def main() -> None:
         page.locator('body[data-demo-state="normal"]').wait_for()
         assert page.locator("#injected-node").count() == 0
         assert page.evaluate("window.hacked === undefined")
-        assert marker in page.locator("#conversationView [data-stated-facts]").inner_text()
+        assert marker in page.locator(
+            "#conversationView [data-stated-facts]"
+        ).first.inner_text()
 
         stage["name"] = "workflow-layout"
         page.locator('[data-mode="workflow"]').click()

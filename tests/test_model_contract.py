@@ -13,9 +13,15 @@ from employee_assistant.model_contract import (
 )
 
 
-def request(tenure: str = "4년") -> dict:
+def request(
+    tenure: str = "4년",
+    laptop_inquiry_goal: str = "replacement_process",
+    inquiry_scope: str = "both",
+) -> dict:
     return {
         "inquiry_type": "monitor_and_laptop_replacement",
+        "laptop_inquiry_goal": laptop_inquiry_goal,
+        "inquiry_scope": inquiry_scope,
         "user_text": "모니터와 느려진 노트북 문의",
         "employee_facts": {
             "tenure": tenure,
@@ -74,6 +80,12 @@ class ModelContractTest(unittest.TestCase):
             self.model_input["employee_input"]["trust"],
             "untrusted_employee_content",
         )
+        self.assertEqual(
+            self.model_input["employee_input"]["laptop_inquiry_goal"],
+            "replacement_process",
+        )
+        self.assertEqual(self.model_input["employee_input"]["inquiry_scope"], "both")
+        self.assertEqual(self.model_input["supported_inquiry"]["scope"], "both")
         self.assertTrue(
             all(
                 item["trust"] == "untrusted_reference_content"
@@ -93,6 +105,23 @@ class ModelContractTest(unittest.TestCase):
         self.assertTrue(validated["application_boundary"]["requires_explicit_apply"])
         self.assertEqual(validated["validation"]["semantic_alignment"], "not_checked")
         self.assertEqual(len(validated["proposal_revision"]), 64)
+
+    def test_preserves_raw_monitor_detail_in_untrusted_employee_input(self) -> None:
+        value = request()
+        value["employee_facts"]["monitor_employee_detail"] = (
+            "  기존 직원, 입사일 2025-06-01  "
+        )
+        response = process_request(self.corpus, value)
+        model_input = assemble_model_input(response)
+
+        self.assertEqual(
+            response["request"]["employee_facts"]["monitor_employee_detail"],
+            "  기존 직원, 입사일 2025-06-01  ",
+        )
+        self.assertEqual(
+            model_input["employee_input"]["facts"]["monitor_employee_detail"],
+            "  기존 직원, 입사일 2025-06-01  ",
+        )
 
     def test_rejects_known_catalog_id_absent_from_this_request(self) -> None:
         known_but_absent = "repairs-company-issued"
@@ -176,6 +205,83 @@ class ModelContractTest(unittest.TestCase):
         self.assert_contract_error(
             "input_revision_mismatch",
             lambda: validate_model_proposal(changed_input, self.candidate),
+        )
+
+    def test_explicit_laptop_goal_changes_model_input_revision(self) -> None:
+        before_response = process_request(
+            self.corpus, request(laptop_inquiry_goal="before_replacement")
+        )
+        before_input = assemble_model_input(before_response)
+
+        self.assertEqual(
+            before_input["employee_input"]["laptop_inquiry_goal"],
+            "before_replacement",
+        )
+        self.assertNotEqual(
+            self.model_input["input_revision"], before_input["input_revision"]
+        )
+        self.assert_contract_error(
+            "input_revision_mismatch",
+            lambda: validate_model_proposal(before_input, self.candidate),
+        )
+
+    def test_rejects_goal_changed_inside_assembled_snapshot(self) -> None:
+        self.model_input["employee_input"][
+            "laptop_inquiry_goal"
+        ] = "before_replacement"
+
+        self.assert_contract_error(
+            "model_input_revision_mismatch",
+            lambda: validate_model_proposal(self.model_input, self.candidate),
+        )
+
+    def test_scope_limits_model_material_and_blocks_unselected_branch(self) -> None:
+        response = process_request(self.corpus, request(inquiry_scope="laptop"))
+        model_input = assemble_model_input(response)
+        candidate = synthetic_candidate(model_input, response)
+
+        self.assertEqual(model_input["supported_inquiry"]["scope"], "laptop")
+        self.assertEqual(model_input["employee_input"]["inquiry_scope"], "laptop")
+        self.assertEqual(
+            model_input["retrieved_material"]["evidence_ids"],
+            ["equipment", "laptops-insurance-repairs"],
+        )
+        self.assertFalse(model_input["branches"]["monitor"]["selected"])
+        self.assertFalse(model_input["branches"]["monitor"]["generation_allowed"])
+        self.assertEqual(
+            model_input["branches"]["monitor"]["generation_block_reason"],
+            "not_selected",
+        )
+        self.assertEqual(model_input["cross_branch_unverified_items"], [])
+        validate_model_proposal(model_input, candidate)
+
+        candidate["branches"]["monitor"] = {
+            "status": "ready",
+            "reason": None,
+            "answer": {"text": "선택하지 않은 모니터 답", "evidence_ids": ["equipment"]},
+            "draft_proposal": {
+                "text": "선택하지 않은 모니터 글",
+                "evidence_ids": ["equipment"],
+            },
+        }
+        self.assert_contract_error(
+            "branch_must_withhold",
+            lambda: validate_model_proposal(model_input, candidate),
+        )
+
+    def test_scope_change_revises_snapshot_and_direct_mutation_is_rejected(self) -> None:
+        laptop_response = process_request(self.corpus, request(inquiry_scope="laptop"))
+        laptop_input = assemble_model_input(laptop_response)
+        self.assertNotEqual(self.model_input["input_revision"], laptop_input["input_revision"])
+        self.assert_contract_error(
+            "input_revision_mismatch",
+            lambda: validate_model_proposal(laptop_input, self.candidate),
+        )
+
+        self.model_input["employee_input"]["inquiry_scope"] = "laptop"
+        self.assert_contract_error(
+            "model_input_revision_mismatch",
+            lambda: validate_model_proposal(self.model_input, self.candidate),
         )
 
     def test_rejects_employee_fact_changed_inside_assembled_snapshot(self) -> None:

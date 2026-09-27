@@ -1,7 +1,12 @@
 (function () {
   "use strict";
 
-  var QUESTION = "재택용 모니터와 느려진 회사 노트북을 같이 바꾸고 싶은데, 같은 경비 신청으로 처리하면 돼?";
+  var DEFAULT_LAPTOP_INQUIRY_GOAL = "replacement_process";
+  var DEFAULT_INQUIRY_SCOPE = "both";
+  var QUESTIONS_BY_LAPTOP_GOAL = {
+    before_replacement: "재택용 모니터를 구입하고, 느려진 회사 노트북은 교체를 정하기 전에 무엇을 확인할지 문의하고 싶어요.",
+    replacement_process: "재택용 모니터를 구입하고, 느려진 회사 노트북의 교체 절차를 문의하고 싶어요."
+  };
   var draftStore = window.EmployeeAssistantDraftStore;
   var state = {
     mode: "conversation",
@@ -9,6 +14,8 @@
     panelTab: "evidence",
     activeDraft: "monitor",
     step: "4",
+    inquiryScope: DEFAULT_INQUIRY_SCOPE,
+    laptopInquiryGoal: DEFAULT_LAPTOP_INQUIRY_GOAL,
     conditions: { tenure: "", symptom: "", purchase: "" },
     drafts: { monitor: undefined, it: undefined },
     draftTouched: { monitor: false, it: false },
@@ -31,6 +38,9 @@
       revision: 0,
       savedAt: null,
       expiresAt: null,
+      schemaVersion: null,
+      legacyGoalDefaulted: false,
+      legacyScopeDefaulted: false,
       savedContentSignature: null,
       writableRevision: null,
       opaqueToken: null,
@@ -82,6 +92,8 @@
   function draftSnapshot() {
     return {
       inquiry_type: "monitor_and_laptop_replacement",
+      inquiry_scope: state.inquiryScope,
+      laptop_inquiry_goal: state.laptopInquiryGoal,
       employee_input: {
         tenure: state.conditions.tenure,
         symptom: state.conditions.symptom,
@@ -103,7 +115,12 @@
   }
 
   function contentSignature(snapshot) {
-    return JSON.stringify({ employee_input: snapshot.employee_input, drafts: snapshot.drafts });
+    return JSON.stringify({
+      inquiry_scope: snapshot.inquiry_scope,
+      laptop_inquiry_goal: snapshot.laptop_inquiry_goal,
+      employee_input: snapshot.employee_input,
+      drafts: snapshot.drafts
+    });
   }
 
   function currentContentSignature() {
@@ -177,6 +194,9 @@
     state.storage.revision = metadata.revision;
     state.storage.savedAt = metadata.saved_at;
     state.storage.expiresAt = metadata.expires_at;
+    state.storage.schemaVersion = metadata.schema_version || null;
+    state.storage.legacyGoalDefaulted = Boolean(metadata.legacy_goal_defaulted);
+    state.storage.legacyScopeDefaulted = Boolean(metadata.legacy_scope_defaulted);
     state.storage.opaqueToken = metadata.opaque_token || null;
     state.storage.lastError = options.error || null;
     if (metadata.status !== "available" || priorRevision !== metadata.revision) {
@@ -298,15 +318,59 @@
     return value;
   }
 
+  function questionForGoal(goal) {
+    var laptopQuestion = goal === "before_replacement"
+      ? "느려진 회사 노트북은 교체를 정하기 전에 무엇을 확인할지 문의하고 싶어요."
+      : "느려진 회사 노트북의 교체 절차를 문의하고 싶어요.";
+    if (state.inquiryScope === "monitor") return "재택용 모니터 구입 조건과 문의 방법을 확인하고 싶어요.";
+    if (state.inquiryScope === "laptop") return laptopQuestion;
+    return QUESTIONS_BY_LAPTOP_GOAL[goal] || QUESTIONS_BY_LAPTOP_GOAL[DEFAULT_LAPTOP_INQUIRY_GOAL];
+  }
+
+  function draftBranch(key) {
+    return key === "it" ? "laptop" : "monitor";
+  }
+
+  function scopeIncludesBranch(branchName) {
+    return state.inquiryScope === "both" || state.inquiryScope === branchName;
+  }
+
+  function scopeIncludesDraft(key) {
+    return scopeIncludesBranch(draftBranch(key));
+  }
+
+  function firstSelectedDraft() {
+    return state.inquiryScope === "laptop" ? "it" : "monitor";
+  }
+
+  function ensureActiveDraftInScope() {
+    if (!scopeIncludesDraft(state.activeDraft)) state.activeDraft = firstSelectedDraft();
+  }
+
+  function inquiryGoalLabel(goal) {
+    return goal === "before_replacement"
+      ? "교체를 정하기 전 확인 문의"
+      : "교체 절차 문의";
+  }
+
+  function inquiryScopeLabel(scope) {
+    if (scope === "monitor") return "모니터만";
+    if (scope === "laptop") return "노트북만";
+    return "모니터와 노트북 둘 다";
+  }
+
   function payload(requestId) {
-    var facts = {};
-    if (state.conditions.tenure) facts.tenure = state.conditions.tenure;
-    if (state.conditions.symptom) facts.symptom = state.conditions.symptom;
-    if (state.conditions.purchase) facts.purchase_status = purchaseForApi(state.conditions.purchase);
+    var facts = {
+      tenure: state.conditions.tenure,
+      symptom: state.conditions.symptom,
+      purchase_status: purchaseForApi(state.conditions.purchase)
+    };
     return {
       client_request_id: requestId,
       inquiry_type: "monitor_and_laptop_replacement",
-      user_text: QUESTION,
+      inquiry_scope: state.inquiryScope,
+      laptop_inquiry_goal: state.laptopInquiryGoal,
+      user_text: questionForGoal(state.laptopInquiryGoal),
       employee_facts: facts,
       exclude_laptop_evidence: state.excludeLaptopEvidence
     };
@@ -340,9 +404,15 @@
       button.setAttribute("aria-pressed", String(button.dataset.demoStateButton === state.demoState));
       button.disabled = state.demoState === "loading";
     });
-    var summary = "모니터·노트북 문서";
+    var summary = state.inquiryScope === "monitor"
+      ? "모니터 문서"
+      : state.inquiryScope === "laptop"
+      ? "노트북 문서"
+      : "모니터·노트북 문서";
     if (state.demoState === "loading") summary = "문서 확인 중";
-    if (state.demoState === "missing") summary = "모니터 근거 확인 · 노트북 근거 부족";
+    if (state.demoState === "missing") summary = state.inquiryScope === "laptop"
+      ? "노트북 근거 부족"
+      : "모니터 근거 확인 · 노트북 근거 부족";
     if (state.demoState === "error") summary = "로컬 연결 실패";
     all("[data-summary-evidence]").forEach(function (node) { node.textContent = summary; });
     syncProposalButtons();
@@ -368,6 +438,99 @@
     all("[data-panel-content]").forEach(function (panel) {
       panel.hidden = panel.dataset.panelContent !== state.panelTab;
     });
+  }
+
+  function syncInquiryScope() {
+    var currentInquiryLabel = state.inquiryScope === "monitor"
+      ? "모니터 문의"
+      : state.inquiryScope === "laptop"
+      ? "노트북 문의"
+      : "모니터·노트북 문의";
+    all("[data-inquiry-scope]").forEach(function (field) {
+      field.checked = field.value === state.inquiryScope;
+    });
+    all("[data-current-inquiry-label]").forEach(function (node) {
+      node.textContent = currentInquiryLabel;
+    });
+    all("[data-current-inquiry-context]").forEach(function (node) {
+      node.textContent = node.closest(".thread-header")
+        ? "장비 정책 / " + currentInquiryLabel
+        : "현재 " + currentInquiryLabel;
+    });
+    all("[data-scope-intro]").forEach(function (node) {
+      node.textContent = state.inquiryScope === "monitor"
+        ? "재택용 모니터의 일반적인 정책 안내를 확인하고, 필요하면 담당자에게 보낼 문의 글을 준비하려는 질문입니다."
+        : state.inquiryScope === "laptop"
+        ? "느려진 회사 노트북의 일반적인 정책 안내를 확인하고, 필요하면 IT 팀에 보낼 문의 글을 준비하려는 질문입니다."
+        : "모니터와 회사 노트북의 일반적인 처리 방법을 알아보고, 필요한 경우 담당자에게 보낼 문의 글을 준비하려는 질문입니다.";
+    });
+    all("[data-laptop-scope-content]").forEach(function (node) {
+      node.hidden = state.inquiryScope === "monitor";
+    });
+    all("[data-scope-description]").forEach(function (node) {
+      node.textContent = state.inquiryScope === "monitor"
+        ? "이번에는 모니터 구입 조건과 문의 글만 준비합니다. 노트북 입력과 글은 지우지 않고 보관합니다."
+        : state.inquiryScope === "laptop"
+        ? "이번에는 느려진 회사 노트북 문의만 준비합니다. 모니터 글은 지우지 않고 보관합니다."
+        : "모니터 구매와 느려진 회사 노트북에 관한 문의입니다. 노트북 문의 목적은 아래에서 직접 고릅니다.";
+    });
+    all("[data-summary-personal-label]").forEach(function (node) {
+      node.textContent = state.inquiryScope === "monitor"
+        ? "개인 적용·처리"
+        : state.inquiryScope === "laptop"
+        ? "개인 refresh·승인"
+        : "개인 적용·승인";
+    });
+    all("[data-summary-note]").forEach(function (node) {
+      node.textContent = state.inquiryScope === "monitor"
+        ? "모니터의 개인 적용 경로·남은 수당·실제 처리는 공개 표본만으로 확인되지 않습니다. 이 화면은 문의 글을 준비할 뿐 신청·발송·구매 승인을 대신하지 않습니다."
+        : "세 정보를 모두 채워도 문의 글을 준비한 상태일 뿐입니다. 신청·발송·구매 승인을 대신하지 않습니다.";
+    });
+    all("[data-answer-boundary]").forEach(function (node) {
+      node.textContent = state.inquiryScope === "monitor"
+        ? "개인의 남은 수당과 실제 적용 경로·처리는 공개 표본만으로 알 수 없습니다."
+        : state.inquiryScope === "laptop"
+        ? "개인의 실제 refresh 자격·승인 상태와 느려짐에 적용할 절차는 공개 표본만으로 알 수 없습니다."
+        : "두 요청을 한 화면에서 같이 신청할 수 있는지, 개인의 남은 수당과 실제 refresh 자격·승인 상태는 공개 정책만으로 알 수 없습니다.";
+    });
+    all("[data-missing-summary]").forEach(function (node) {
+      node.replaceChildren();
+      if (state.inquiryScope === "both") {
+        var monitorAnswer = document.createElement("span");
+        monitorAnswer.dataset.missingMonitorAnswer = "";
+        monitorAnswer.textContent = "모니터 답과 문의 글은 유지합니다.";
+        node.append(
+          monitorAnswer,
+          document.createTextNode(" 노트북에 필요한 핵심 표본이 빠져 있어 정책이 없다고 답하거나 새 IT 문의 글을 완성하지 않습니다.")
+        );
+      } else if (state.inquiryScope === "laptop") {
+        node.textContent = "노트북에 필요한 핵심 표본이 빠져 있어 정책이 없다고 답하거나 새 IT 문의 글을 완성하지 않습니다.";
+      } else {
+        node.textContent = "선택한 모니터 문의에는 노트북 표본 누락을 적용하지 않습니다.";
+      }
+    });
+    all("[data-unselected-draft-note]").forEach(function (node) {
+      if (state.inquiryScope === "both") {
+        node.hidden = true;
+        node.textContent = "";
+      } else if (state.inquiryScope === "monitor") {
+        node.hidden = false;
+        node.textContent = "IT 문의 글은 보관 중입니다. 노트북 문의를 다시 선택하면 볼 수 있습니다.";
+      } else {
+        node.hidden = false;
+        node.textContent = "모니터 문의 글은 보관 중입니다. 모니터 문의를 다시 선택하면 볼 수 있습니다.";
+      }
+    });
+    var next = document.querySelector("[data-next-from-question]");
+    if (next) {
+      next.dataset.goStep = state.inquiryScope === "monitor" ? "3" : "2";
+      next.textContent = state.inquiryScope === "monitor" ? "답변과 참고 문서 보기 →" : "내 상황 추가하기 →";
+    }
+    var back = document.querySelector("[data-back-from-answer]");
+    if (back) {
+      back.dataset.goStep = state.inquiryScope === "monitor" ? "1" : "2";
+      back.textContent = state.inquiryScope === "monitor" ? "← 질문" : "← 내 상황";
+    }
   }
 
   function evidenceBranchLabel(branchName) {
@@ -492,45 +655,89 @@
   }
 
   function syncDraftTabs() {
+    ensureActiveDraftInScope();
     all("[data-draft-tab]").forEach(function (button) {
+      button.hidden = !scopeIncludesDraft(button.dataset.draftTab);
       button.setAttribute("aria-selected", String(button.dataset.draftTab === state.activeDraft));
     });
     all("[data-draft-pane]").forEach(function (pane) {
-      pane.hidden = pane.dataset.draftPane !== state.activeDraft;
+      pane.hidden = !scopeIncludesDraft(pane.dataset.draftPane) || pane.dataset.draftPane !== state.activeDraft;
     });
   }
 
   function syncSteps() {
+    if (state.inquiryScope === "monitor" && state.step === "2") state.step = "1";
     var titles = { "1": "04 · 질문 확인", "2": "03 · 내 상황", "3": "02 · 답변과 문서", "4": "01 · 문의 글 편집" };
     all("[data-step]").forEach(function (button) {
+      button.hidden = state.inquiryScope === "monitor" && button.dataset.step === "2";
       if (button.dataset.step === state.step) button.setAttribute("aria-current", "step");
       else button.removeAttribute("aria-current");
     });
-    all("[data-step-panel]").forEach(function (panel) { panel.hidden = panel.dataset.stepPanel !== state.step; });
+    all("[data-step-panel]").forEach(function (panel) {
+      panel.hidden = (state.inquiryScope === "monitor" && panel.dataset.stepPanel === "2") || panel.dataset.stepPanel !== state.step;
+    });
     all("[data-stage-title]").forEach(function (node) { node.textContent = titles[state.step]; });
+  }
+
+  function enteredCondition(value) {
+    return typeof value === "string" && value.trim().length > 0;
   }
 
   function statedFactsText() {
     var facts = [];
-    if (state.conditions.tenure) facts.push("재직 " + state.conditions.tenure);
-    if (state.conditions.symptom) facts.push(state.conditions.symptom + " 느려짐");
+    if (enteredCondition(state.conditions.tenure)) facts.push("재직 " + state.conditions.tenure.trim());
+    if (enteredCondition(state.conditions.symptom)) facts.push(state.conditions.symptom.trim() + " 느려짐");
     if (state.conditions.purchase === "not-purchased") facts.push("미구매");
     if (state.conditions.purchase === "purchased") facts.push("구매 완료");
     if (state.conditions.purchase === "unknown") facts.push("구매 여부 확인 필요");
-    return facts.length ? facts.join(" · ") + " — 직접 입력한 내용" : "재직 기간·느려진 상황·구매 상태를 아직 입력하지 않았습니다.";
+    return facts.length ? facts.join(" · ") : "아직 없음";
+  }
+
+  function copyReviewFactsText(key) {
+    return key === "monitor"
+      ? "모니터 새 제안에는 노트북용 입력을 자동 반영하지 않습니다. 직접 수정한 내용은 복사할 글에서 확인해 주세요."
+      : statedFactsText();
+  }
+
+  function missingFactsText() {
+    var missing = [];
+    if (!enteredCondition(state.conditions.tenure)) missing.push("재직 기간");
+    if (!enteredCondition(state.conditions.symptom)) missing.push("느려진 시점·상황");
+    if (!enteredCondition(state.conditions.purchase)) missing.push("구매 상태");
+    return missing.length
+      ? missing.join(" · ") + " — 문의 접수 필수 항목으로 확인된 것은 아닙니다."
+      : "없음";
   }
 
   function syncConditions() {
     all("[data-field]").forEach(function (field) {
       if (field.value !== state.conditions[field.dataset.field]) field.value = state.conditions[field.dataset.field];
     });
-    var count = Object.keys(state.conditions).filter(function (key) { return Boolean(state.conditions[key]); }).length;
+    var count = Object.keys(state.conditions).filter(function (key) {
+      return enteredCondition(state.conditions[key]);
+    }).length;
     all("[data-condition-count]").forEach(function (node) { node.textContent = count + "/3 입력"; });
     all("[data-stated-facts]").forEach(function (node) { node.textContent = statedFactsText(); });
+    all("[data-missing-facts]").forEach(function (node) { node.textContent = missingFactsText(); });
+  }
+
+  function syncInquiryGoal() {
+    all("[data-laptop-inquiry-goal]").forEach(function (field) {
+      field.checked = field.value === state.laptopInquiryGoal;
+    });
+    all("[data-question-text]").forEach(function (node) {
+      node.textContent = questionForGoal(state.laptopInquiryGoal);
+    });
+    all("[data-inquiry-goal-label]").forEach(function (node) {
+      node.textContent = inquiryGoalLabel(state.laptopInquiryGoal);
+    });
   }
 
   function draftStatus(branchName) {
     var proposal = state.proposals[branchName];
+    if (!scopeIncludesDraft(branchName)) {
+      return { kind: "review", text: "이번 문의에서 선택하지 않은 글입니다. 내용은 보관하며 다시 선택하면 이어서 볼 수 있습니다." };
+    }
     if (state.restoredDraft[branchName]) {
       if (!proposal) {
         return { kind: "review", text: "임시 저장에서 불러온 글입니다. 현재 참고 문서로는 이 갈래의 새 제안을 만들지 않았지만, 불러온 글은 계속 고치거나 복사할 수 있습니다." };
@@ -595,7 +802,7 @@
   }
 
   function proposalCanBeReviewed(key) {
-    return Boolean(state.proposals[key]) &&
+    return scopeIncludesDraft(key) && Boolean(state.proposals[key]) &&
       ["normal", "missing"].includes(state.demoState) &&
       state.proposalInputRevision[key] === state.inputRevision;
   }
@@ -617,6 +824,8 @@
       draftInputRevision: state.draftInputRevision[key],
       sourceRevision: state.sourceRevision[key],
       sourceProposalSignature: state.sourceProposalSignature[key],
+      inquiryScope: state.inquiryScope,
+      laptopInquiryGoal: state.laptopInquiryGoal,
       inputRevision: state.inputRevision,
       branchInputRevision: state.branchInputRevision[key],
       proposalInputRevision: state.proposalInputRevision[key],
@@ -646,6 +855,7 @@
   }
 
   function proposalUnavailableMessage(key) {
+    if (!scopeIncludesDraft(key)) return "이번 문의에서 선택하지 않은 글입니다. 다시 선택한 뒤 새 제안을 비교해 주세요.";
     if (state.demoState === "loading") return "문서를 확인하는 중입니다. 확인이 끝난 뒤 새 제안을 비교해 주세요.";
     if (state.demoState === "error") return "최근 문서 확인 결과를 받지 못해 새 제안을 비교할 수 없습니다.";
     if (!state.proposals[key]) return "현재 참고 문서로는 이 문의 글의 새 제안을 만들 수 없습니다.";
@@ -743,6 +953,8 @@
     return JSON.stringify({
       key: key,
       text: state.drafts[key] || "",
+      inquiryScope: state.inquiryScope,
+      laptopInquiryGoal: state.laptopInquiryGoal,
       inputRevision: state.inputRevision,
       branchInputRevision: state.branchInputRevision[key],
       draftInputRevision: state.draftInputRevision[key],
@@ -776,6 +988,8 @@
     state.copyReview = {
       key: key,
       text: state.drafts[key] || "",
+      inquiryScope: state.inquiryScope,
+      laptopInquiryGoal: state.laptopInquiryGoal,
       fingerprint: copyFingerprint(key)
     };
     document.getElementById("copyReviewTitle").textContent = branchLabel(key) + "을 복사하기 전에 확인해 주세요";
@@ -786,7 +1000,13 @@
       item.textContent = reason;
       reasonList.appendChild(item);
     });
-    document.getElementById("copyReviewFacts").textContent = statedFactsText();
+    document.getElementById("copyReviewGoal").textContent =
+      inquiryScopeLabel(state.copyReview.inquiryScope) +
+      (scopeIncludesBranch("laptop") ? " · " + inquiryGoalLabel(state.copyReview.laptopInquiryGoal) : "");
+    document.getElementById("copyReviewFactsTitle").textContent = key === "monitor"
+      ? "모니터 새 제안 안내"
+      : "현재 입력한 내용";
+    document.getElementById("copyReviewFacts").textContent = copyReviewFactsText(key);
     document.getElementById("copyReviewDraft").textContent = state.copyReview.text;
     dialog.showModal();
     syncCopyReview();
@@ -889,17 +1109,19 @@
     });
     all(".result-list").forEach(function (list) {
       list.replaceChildren();
-      [["모니터", monitor], ["노트북", laptop]].forEach(function (entry) {
-        var branchName = entry[0] === "노트북" ? "laptop" : "monitor";
+      [["모니터", "monitor", monitor], ["노트북", "laptop", laptop]].filter(function (entry) {
+        return scopeIncludesBranch(entry[1]);
+      }).forEach(function (entry) {
+        var branchName = entry[1];
         var item = document.createElement("li");
         var mark = document.createElement("span");
         mark.className = "check";
-        mark.textContent = entry[1].answer.text ? "✓" : "?";
+        mark.textContent = entry[2].answer.text ? "✓" : "?";
         var text = document.createElement("span");
         var strong = document.createElement("strong");
         strong.textContent = entry[0] + ": ";
-        text.append(strong, document.createTextNode(entry[1].answer.text || "필수 근거가 부족해 새 답과 문의 글 제안을 보류했습니다."));
-        if (entry[1].answer.text && entry[1].answer.evidence_ids.length) {
+        text.append(strong, document.createTextNode(entry[2].answer.text || "필수 근거가 부족해 새 답과 문의 글 제안을 보류했습니다."));
+        if (entry[2].answer.text && entry[2].answer.evidence_ids.length) {
           var evidenceButton = document.createElement("button");
           evidenceButton.type = "button";
           evidenceButton.className = "button ghost result-evidence-button";
@@ -917,12 +1139,12 @@
       var boundaryText = document.createElement("span");
       var boundaryTitle = document.createElement("strong");
       boundaryTitle.textContent = "공개 표본으로 확인하지 못한 내용: ";
-      boundaryText.append(
-        boundaryTitle,
-        document.createTextNode(
-          "모니터와 노트북 요청을 같은 신청으로 묶을 수 있는지, 개인의 남은 수당과 실제 적용 여부는 확인하지 못했습니다."
-        )
-      );
+      var boundary = state.inquiryScope === "monitor"
+        ? "개인의 남은 수당과 실제 적용 경로·처리는 확인하지 못했습니다."
+        : state.inquiryScope === "laptop"
+        ? "개인의 실제 refresh 자격·승인 상태와 느려짐에 적용할 절차는 확인하지 못했습니다."
+        : "모니터와 노트북 요청을 같은 신청으로 묶을 수 있는지, 개인의 남은 수당과 실제 적용 여부는 확인하지 못했습니다.";
+      boundaryText.append(boundaryTitle, document.createTextNode(boundary));
       boundaryItem.append(boundaryMark, boundaryText);
       list.appendChild(boundaryItem);
     });
@@ -933,8 +1155,10 @@
     syncMode();
     syncDemoState();
     syncPanel();
+    syncInquiryScope();
     syncDraftTabs();
     syncSteps();
+    syncInquiryGoal();
     syncConditions();
     syncDrafts();
     syncRestoredDraftAccess();
@@ -954,7 +1178,9 @@
       var proposal = state.response.branches[branchKey].draft_proposal;
       state.proposals[key] = proposal.status === "available_rule_composed" ? proposal : null;
       state.proposalInputRevision[key] = inputRevision;
-      if (state.drafts[key] === undefined && state.proposals[key]) {
+      if ((state.drafts[key] === undefined ||
+           (state.drafts[key] === "" && !state.draftTouched[key] && state.sourceRevision[key] === null)) &&
+          state.proposals[key]) {
         state.drafts[key] = state.proposals[key].text;
         state.sourceRevision[key] = state.proposals[key].revision;
         state.sourceProposalSignature[key] = proposalSourceSignature(state.proposals[key]);
@@ -967,7 +1193,9 @@
       }
     });
     state.lastSettledDemoState = state.demoState;
-    if (state.demoState === "missing" && state.activeDraft === "it" && !state.restoredDraft.it) {
+    ensureActiveDraftInScope();
+    if (state.demoState === "missing" && state.activeDraft === "it" && !state.restoredDraft.it &&
+        scopeIncludesDraft("monitor")) {
       state.activeDraft = "monitor";
     }
     if (initializesNewInquiry && state.leaveProtection.initialSignature === null &&
@@ -984,6 +1212,8 @@
     resetEvidenceView();
     var requestId = ++state.requestSequence;
     var requestInputRevision = state.inputRevision;
+    var requestInquiryScope = state.inquiryScope;
+    var requestLaptopInquiryGoal = state.laptopInquiryGoal;
     state.currentRequestId = requestId;
     state.demoState = "loading";
     if (state.response) renderEvidence();
@@ -998,6 +1228,11 @@
       if (requestId !== state.currentRequestId) return;
       if (!response.ok) throw new Error(body.error && body.error.message ? body.error.message : "요청 처리 실패");
       if (body.client_request_id !== requestId) throw new Error("요청 순서가 일치하지 않습니다.");
+      if (!body.result || !body.result.request ||
+          body.result.request.laptop_inquiry_goal !== requestLaptopInquiryGoal ||
+          body.result.request.inquiry_scope !== requestInquiryScope) {
+        throw new Error("문의 범위 또는 노트북 문의 목적이 요청과 일치하지 않습니다.");
+      }
       if (requestInputRevision !== state.inputRevision) {
         state.demoState = state.lastSettledDemoState || "error";
         render();
@@ -1094,6 +1329,10 @@
   }
 
   function copyDraft(key) {
+    if (!scopeIncludesDraft(key)) {
+      showToast("이번 문의에서 선택하지 않은 글은 복사할 수 없습니다. 다시 선택한 뒤 확인해 주세요.");
+      return;
+    }
     var reasons = copyReviewReasons(key);
     if (reasons.length) {
       openCopyReview(key, reasons);
@@ -1110,7 +1349,8 @@
 
   function confirmCopyReview() {
     if (!state.copyReview) return;
-    if (state.copyReview.fingerprint !== copyFingerprint(state.copyReview.key)) {
+    if (!scopeIncludesDraft(state.copyReview.key) ||
+        state.copyReview.fingerprint !== copyFingerprint(state.copyReview.key)) {
       syncCopyReview();
       return;
     }
@@ -1189,7 +1429,14 @@
       storageRevision: state.storage.revision,
       workspaceRevision: state.workspaceRevision
     };
-    document.getElementById("restoreDraftSavedAt").textContent = formatLocalTime(state.storage.savedAt) + "에 저장한 한 건을 불러옵니다.";
+    document.getElementById("restoreDraftSavedAt").textContent = formatLocalTime(state.storage.savedAt) +
+      "에 저장한 한 건을 불러옵니다." +
+      (state.storage.legacyGoalDefaulted
+        ? " 옛 화면은 교체 절차 문의만 제공했으므로 그 목적으로 복원합니다. 글의 내용에서 목적을 추론하지 않습니다."
+        : "") +
+      (state.storage.legacyScopeDefaulted
+        ? " 옛 저장본은 두 문의를 함께 제공한 화면의 기록이므로 ‘둘 다’로 복원합니다."
+        : "");
     document.getElementById("restoreDraftDialog").showModal();
     syncActionDialogs();
   }
@@ -1202,6 +1449,8 @@
 
   function applyRestoredPayload(payload) {
     state.currentRequestId = ++state.requestSequence;
+    state.inquiryScope = payload.inquiry_scope;
+    state.laptopInquiryGoal = payload.laptop_inquiry_goal;
     state.conditions = {
       tenure: payload.employee_input.tenure,
       symptom: payload.employee_input.symptom,
@@ -1214,9 +1463,11 @@
     };
     state.mode = payload.ui.mode;
     state.activeDraft = payload.ui.active_draft;
+    ensureActiveDraftInScope();
     if (state.mode === "conversation") state.panelTab = "draft";
     if (state.mode === "workflow") state.step = "4";
     state.inputRevision += 1;
+    state.branchInputRevision.monitor += 1;
     state.branchInputRevision.it += 1;
     state.draftInputRevision = {
       monitor: state.branchInputRevision.monitor,
@@ -1259,7 +1510,9 @@
         savedContentSignature: contentSignature(loaded.payload),
         writableRevision: loaded.metadata.revision
       });
-      showToast("저장한 글을 불러왔습니다. 현재 참고 문서는 다시 확인하며 글을 자동으로 바꾸지 않습니다.");
+      showToast(loaded.metadata.legacy_goal_defaulted || loaded.metadata.legacy_scope_defaulted
+        ? "옛 저장 글을 기존 문의 범위로 불러왔습니다. 현재 참고 문서는 다시 확인하며 글을 자동으로 바꾸지 않습니다."
+        : "저장한 글을 불러왔습니다. 현재 참고 문서는 다시 확인하며 글을 자동으로 바꾸지 않습니다.");
       await refreshWorkspace();
       if (mayRefocusRestoredDraft(focusCheckpoint)) focusRestoredDraftArea();
     } catch (error) {
@@ -1342,6 +1595,8 @@
     state.panelTab = "evidence";
     state.activeDraft = "monitor";
     state.step = "4";
+    state.inquiryScope = DEFAULT_INQUIRY_SCOPE;
+    state.laptopInquiryGoal = DEFAULT_LAPTOP_INQUIRY_GOAL;
     state.conditions = { tenure: "", symptom: "", purchase: "" };
     state.drafts = { monitor: undefined, it: undefined };
     state.draftTouched = { monitor: false, it: false };
@@ -1354,6 +1609,7 @@
     state.response = null;
     state.excludeLaptopEvidence = false;
     state.inputRevision += 1;
+    state.branchInputRevision.monitor += 1;
     state.branchInputRevision.it += 1;
     state.lastSettledDemoState = null;
     state.restoredDraft = { monitor: false, it: false };
@@ -1385,7 +1641,7 @@
         resetEvidenceView();
         renderEvidence();
       }
-      if (state.panelTab === "draft") state.activeDraft = "it";
+      if (state.panelTab === "draft") state.activeDraft = scopeIncludesDraft("it") ? "it" : "monitor";
       syncPanel(); syncDraftTabs();
       document.querySelector(".context-panel").scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
@@ -1394,7 +1650,11 @@
     button.addEventListener("click", function () { state.panelTab = button.dataset.panelTab; syncPanel(); });
   });
   all("[data-draft-tab]").forEach(function (button) {
-    button.addEventListener("click", function () { state.activeDraft = button.dataset.draftTab; syncDraftTabs(); });
+    button.addEventListener("click", function () {
+      if (!scopeIncludesDraft(button.dataset.draftTab)) return;
+      state.activeDraft = button.dataset.draftTab;
+      syncDraftTabs();
+    });
   });
   all("[data-step]").forEach(function (button) {
     button.addEventListener("click", function () { state.step = button.dataset.step; syncSteps(); });
@@ -1409,6 +1669,32 @@
   });
   document.querySelector("[data-show-all-evidence]").addEventListener("click", showAllEvidence);
   document.querySelector("[data-return-to-answer]").addEventListener("click", returnToAnswer);
+  all("[data-inquiry-scope]").forEach(function (field) {
+    field.addEventListener("change", function () {
+      if (!field.checked || state.inquiryScope === field.value) return;
+      state.inquiryScope = field.value;
+      state.inputRevision += 1;
+      state.branchInputRevision.monitor += 1;
+      state.branchInputRevision.it += 1;
+      ensureActiveDraftInScope();
+      markWorkspaceChanged();
+      render();
+      refreshWorkspace({ message: "선택한 문의 범위로 문서와 새 제안을 다시 확인했습니다. 작성 중인 두 글은 보관했습니다." });
+    });
+  });
+  all("[data-laptop-inquiry-goal]").forEach(function (field) {
+    field.addEventListener("change", function () {
+      if (!field.checked || state.laptopInquiryGoal === field.value) return;
+      state.laptopInquiryGoal = field.value;
+      state.inputRevision += 1;
+      state.branchInputRevision.it += 1;
+      markWorkspaceChanged();
+      syncInquiryGoal();
+      syncDrafts();
+      syncInputChangedNotice();
+      refreshWorkspace({ message: "선택한 노트북 문의 목적으로 새 제안을 만들었습니다. 작성 중인 글은 아직 바꾸지 않았습니다." });
+    });
+  });
   all("[data-field]").forEach(function (field) {
     field.addEventListener("input", function () {
       var key = field.dataset.field;
